@@ -4,6 +4,7 @@
   "description": "Third-party runtime deps for extracted plugin trees in src/.",
   "dependencies": {
     "@ast-grep/cli": "^0.45.0",
+    "@sinclair/typebox": "^0.34.48",
     "@ast-grep/napi": "^0.45.0",
     "@modelcontextprotocol/client": "2.0.0",
     "@modelcontextprotocol/core": "2.0.0",

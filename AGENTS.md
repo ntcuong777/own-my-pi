@@ -33,6 +33,7 @@ Plugin source lives in vendor/src/, not tarballs. Git snapshots:
 - vendor/src/pi-neuralwatt (aliou/pi-neuralwatt)
 - vendor/src/pi-codex-account (fadilsflow/pi-codex-account)
 - vendor/src/pi-subagents (nicobailon/pi-subagents)
+- vendor/src/pi-memory (samfoy/pi-memory, @samfp/pi-memory)
 
 Custom spawn must enforce cwd; it must not create git worktrees. Plan
 delegation uses pi-subagents, not a custom spawn hub.

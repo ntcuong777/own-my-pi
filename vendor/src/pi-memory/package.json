@@ -1,0 +1,54 @@
+{
+  "name": "@samfp/pi-memory",
+  "version": "1.5.0",
+  "description": "Persistent memory for pi — learns corrections, preferences, and patterns from sessions and injects them into future conversations.",
+  "keywords": [
+    "pi-package",
+    "extension",
+    "memory",
+    "learning",
+    "preferences"
+  ],
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/samfoy/pi-memory"
+  },
+  "pi": {
+    "extensions": [
+      "./dist/index.js"
+    ]
+  },
+  "scripts": {
+    "test": "node --test --import tsx src/**/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --sourcemap --packages=external --external:@mariozechner/pi-coding-agent --external:@earendil-works/pi-coding-agent --external:@sinclair/typebox",
+    "check": "tsc --noEmit",
+    "dev": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --sourcemap --watch --packages=external --external:@mariozechner/pi-coding-agent --external:@earendil-works/pi-coding-agent --external:@sinclair/typebox",
+    "prepare": "npm run build"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "@sinclair/typebox": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@earendil-works/pi-coding-agent": "0.83.0",
+    "@sinclair/typebox": "^0.34.48",
+    "@types/node": "^22.15.21",
+    "esbuild": "^0.27.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  }
+}

@@ -13,7 +13,7 @@ and symlinks package names to those trees. Settings packages are local
 paths. No pi install npm at runtime.
 
 Git snapshots: aliou/pi-neuralwatt, fadilsflow/pi-codex-account,
-nicobailon/pi-subagents.
+nicobailon/pi-subagents, samfoy/pi-memory.
 Extracted npm plugins: juicesharp rpiv-*, pi-mcp-adapter, pi-hashline-edit,
 pi-smart-compact, pi-lens, pi-ast-grep, pi-antiloop, narumitw/pi-plan-mode.
 

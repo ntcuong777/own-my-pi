@@ -38,7 +38,7 @@ fi
 vendor="$(cd "$vendor" && pwd)"
 cd "$vendor"
 
-mkdir -p node_modules/@aliou node_modules/@juicesharp node_modules/@narumitw
+mkdir -p node_modules/@aliou node_modules/@juicesharp node_modules/@narumitw node_modules/@samfp
 
 if [ -n "$store" ] && [ -d "$store/node_modules" ] && [ ! -e node_modules/typebox ]; then
   echo "own-my-pi: seeding vendor/node_modules from $store"
@@ -76,6 +76,7 @@ link_pkg "@juicesharp/rpiv-todo" "src/rpiv-todo"
 link_pkg "@juicesharp/rpiv-web-tools" "src/rpiv-web-tools"
 link_pkg "@narumitw/pi-plan-mode" "src/pi-plan-mode"
 link_pkg "@narumitw/pi-tui-kit" "src/pi-tui-kit"
+link_pkg "@samfp/pi-memory" "src/pi-memory"
 link_pkg "pi-antiloop" "src/pi-antiloop"
 link_pkg "pi-ast-grep" "src/pi-ast-grep"
 link_pkg "pi-codex-account" "src/pi-codex-account"

@@ -74,5 +74,11 @@
     "url": "https://github.com/nicobailon/pi-subagents",
     "rev": "07bd09e0f93a19caee3c39e3cf4069c70ee8dbcd",
     "version": "0.68.0"
+  },
+  "@samfp/pi-memory": {
+    "path": "src/pi-memory",
+    "url": "https://github.com/samfoy/pi-memory",
+    "rev": "da1f96d55706db07f39c3767b84890e89298d5f2",
+    "version": "1.5.0"
   }
 }

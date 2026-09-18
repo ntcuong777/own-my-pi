@@ -14,4 +14,6 @@ and runs link-node-modules.sh. Home Manager live-symlinks this vendor
 directory to ~/.pi/agent/vendor. node_modules stays gitignored.
 
 Git snapshots include nicobailon/pi-subagents for plan delegation to cheap
-child agents.
+child agents, and samfoy/pi-memory (@samfp/pi-memory) for cross-session
+preferences and lessons. Default Anthropic consolidation model is a no-op
+on this stack; host settings.json sets memory.consolidationModel.
