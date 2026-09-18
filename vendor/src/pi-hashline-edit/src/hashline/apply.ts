@@ -19,6 +19,7 @@ import {
 	type Anchor,
 	type HashlineEdit,
 } from "./parse";
+import { getBoundaryDedupMode, type BoundaryDedupMode } from "../config";
 import { computeChangedLineRange } from "./format";
 
 interface HashMismatch {
@@ -623,6 +624,51 @@ function warnDuplicateInsert(
 		`Potential duplicate insert at ${describeEdit(edit)}: the inserted lines are identical to the lines already adjacent to the insertion point. If a previous edit call already applied this insert, do not resend it.`,
 	);
 }
+/**
+ * Drop replacement lines that merely re-state the surviving neighbor lines
+ * around the replaced span.
+ *
+ * Models routinely echo the line above/below the range they are replacing, and
+ * a warning-only guard still writes the duplicate. Never strip down to an
+ * empty payload: an empty `lines` array means "delete the span", which is a
+ * different operation than "replace with one line".
+ */
+export function dedupBoundaryLines(params: {
+	lines: string[];
+	prevLine: string | undefined;
+	nextLine: string | undefined;
+	mode: BoundaryDedupMode;
+}): { lines: string[]; strippedFirst: boolean; strippedLast: boolean } {
+	const { prevLine, nextLine, mode } = params;
+	let lines = params.lines;
+	let strippedFirst = false;
+	let strippedLast = false;
+
+	if (mode === "off" || mode === "warn" || lines.length === 0) {
+		return { lines, strippedFirst, strippedLast };
+	}
+
+	const duplicates = (candidate: string | undefined, neighbor: string | undefined) => {
+		if (candidate === undefined || neighbor === undefined) return false;
+		const c = candidate.trim();
+		const n = neighbor.trim();
+		if (c.length === 0 || n.length === 0) return false;
+		return c === n;
+	};
+
+	// Never reduce a replacement to a deletion.
+	if (lines.length > 1 && duplicates(lines.at(-1), nextLine)) {
+		lines = lines.slice(0, -1);
+		strippedLast = true;
+	}
+	if (lines.length > 1 && duplicates(lines[0], prevLine)) {
+		lines = lines.slice(1);
+		strippedFirst = true;
+	}
+
+	return { lines, strippedFirst, strippedLast };
+}
+
 
 /**
  * Validate anchor hashes against the current file content.
@@ -706,28 +752,55 @@ function validateAnchorEdits(
 					);
 				}
 				const nextLine = lineIndex.fileLines[endLine];
-				const replacementLastLine = edit.lines.at(-1)?.trim();
-				if (
-					nextLine !== undefined &&
-					replacementLastLine &&
-					RE_SIGNIFICANT.test(replacementLastLine) &&
-					replacementLastLine === nextLine.trim()
-				) {
-					warnings.push(
-						`Potential boundary duplication after ${describeEdit(edit)}: the replacement ends with a line that matches the next surviving line after trim.`,
+				const prevLine = lineIndex.fileLines[edit.pos.line - 2];
+				const mode = getBoundaryDedupMode();
+				const dedup = dedupBoundaryLines({
+					lines: edit.lines,
+					prevLine,
+					nextLine,
+					mode,
+				});
+
+				if (mode === "strict" && (dedup.strippedFirst || dedup.strippedLast)) {
+					throw new Error(
+						`[E_BOUNDARY_DUP] ${describeEdit(edit)} re-includes a surviving neighbor line; strict boundary dedup refuses it. Resend "lines" with only the content that changes.`,
 					);
 				}
-				const prevLine = lineIndex.fileLines[edit.pos.line - 2];
-				const replacementFirstLine = edit.lines[0]?.trim();
-				if (
-					prevLine !== undefined &&
-					replacementFirstLine &&
-					RE_SIGNIFICANT.test(replacementFirstLine) &&
-					replacementFirstLine === prevLine.trim()
-				) {
+
+				if (dedup.strippedFirst || dedup.strippedLast) {
+					// Mutating edit.lines is how the stripped payload reaches
+					// resolveEditSpans — spans are computed from this same object later
+					// in applyHashlineEdits.
+					edit.lines = dedup.lines;
 					warnings.push(
-						`Potential boundary duplication before ${describeEdit(edit)}: the replacement starts with a line that matches the preceding surviving line after trim.`,
+						`Stripped ${[dedup.strippedFirst && "the leading", dedup.strippedLast && "the trailing"].filter(Boolean).join(" and ")} replacement line at ${describeEdit(edit)}: it duplicated a surviving neighbor line.`,
 					);
+				} else if (mode === "warn" || mode === "off") {
+					// Preserve upstream warning-only behavior for mode=warn.
+					if (mode === "warn") {
+						const last = edit.lines.at(-1)?.trim();
+						const first = edit.lines[0]?.trim();
+						if (
+							nextLine !== undefined &&
+							last &&
+							RE_SIGNIFICANT.test(last) &&
+							last === nextLine.trim()
+						) {
+							warnings.push(
+								`Potential boundary duplication after ${describeEdit(edit)}: the replacement ends with a line that matches the next surviving line after trim.`,
+							);
+						}
+						if (
+							prevLine !== undefined &&
+							first &&
+							RE_SIGNIFICANT.test(first) &&
+							first === prevLine.trim()
+						) {
+							warnings.push(
+								`Potential boundary duplication before ${describeEdit(edit)}: the replacement starts with a line that matches the preceding surviving line after trim.`,
+							);
+						}
+					}
 				}
 				break;
 			}
