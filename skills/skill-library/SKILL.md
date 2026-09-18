@@ -40,6 +40,37 @@ For `<skill-name>`, do not merely describe the skill. Load its `SKILL.md` from r
 - `git-commit`: conventional commit generation and staging — `$HOME/.pi/agent/skills/skill-library/software-engineering/git-commit/SKILL.md`
 - `writing-plans`: write implementation plans before multi-step work — `$HOME/.pi/agent/skills/skill-library/software-engineering/writing-plans/SKILL.md`
 
+### Matt Pocock collection
+
+- `matt/grill-me`: interrogate requirements — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/productivity/grill-me/SKILL.md`
+- `matt/handoff`: prepare agent handoffs — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/productivity/handoff/SKILL.md`
+- `matt/write-a-skill`: author a skill — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/productivity/write-a-skill/SKILL.md`
+- `matt/caveman`: compress communication — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/productivity/caveman/SKILL.md`
+- `matt/edit-article`: edit articles — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/personal/edit-article/SKILL.md`
+- `matt/obsidian-vault`: work with Obsidian vaults — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/personal/obsidian-vault/SKILL.md`
+- `matt/setup-pre-commit`: configure pre-commit — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/misc/setup-pre-commit/SKILL.md`
+- `matt/scaffold-exercises`: scaffold exercises — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/misc/scaffold-exercises/SKILL.md`
+- `matt/migrate-to-shoehorn`: migrate to Shoehorn — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/misc/migrate-to-shoehorn/SKILL.md`
+- `matt/git-guardrails-claude-code`: Git guardrails — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/misc/git-guardrails-claude-code/SKILL.md`
+- `matt/writing-shape`: shape writing — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/in-progress/writing-shape/SKILL.md`
+- `matt/writing-fragments`: write concise fragments — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/in-progress/writing-fragments/SKILL.md`
+- `matt/writing-beats`: structure writing beats — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/in-progress/writing-beats/SKILL.md`
+- `matt/review`: review work — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/in-progress/review/SKILL.md`
+- `matt/teach`: teach technical concepts — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/in-progress/teach/SKILL.md`
+- `matt/triage`: triage engineering problems — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/engineering/triage/SKILL.md`
+- `matt/to-prd`: create PRDs — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/engineering/to-prd/SKILL.md`
+- `matt/to-issues`: create issues — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/engineering/to-issues/SKILL.md`
+- `matt/tdd`: apply TDD — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/engineering/tdd/SKILL.md`
+- `matt/prototype`: prototype solutions — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/engineering/prototype/SKILL.md`
+- `matt/improve-codebase-architecture`: improve architecture — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/engineering/improve-codebase-architecture/SKILL.md`
+- `matt/grill-with-docs`: reason with documentation — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/engineering/grill-with-docs/SKILL.md`
+- `matt/diagnose`: diagnose problems — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/engineering/diagnose/SKILL.md`
+- `matt/zoom-out`: widen problem context — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/engineering/zoom-out/SKILL.md`
+- `matt/setup-matt-pocock-skills`: install collection — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/engineering/setup-matt-pocock-skills/SKILL.md`
+- `matt/request-refactor-plan`: request refactor plans — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/deprecated/request-refactor-plan/SKILL.md`
+- `matt/qa`: quality assurance — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/deprecated/qa/SKILL.md`
+- `matt/design-an-interface`: design interfaces — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/deprecated/design-an-interface/SKILL.md`
+- `matt/ubiquitous-language`: define ubiquitous language — `$HOME/.pi/agent/skills/skill-library/software-engineering/mattpocock-skills/skills/deprecated/ubiquitous-language/SKILL.md`
 
 ## Languages
 
@@ -68,3 +99,26 @@ For `<skill-name>`, do not merely describe the skill. Load its `SKILL.md` from r
 ## Testing
 
 - `test-driven-development`: TDD workflow — `$HOME/.pi/agent/skills/skill-library/testing/test-driven-development/SKILL.md`
+
+## Business and product
+
+- `competitive-analysis`: competitor research — `$HOME/.pi/agent/skills/skill-library/business/competitive-analysis/SKILL.md`
+- `startup-financial-modeling`: startup financial models — `$HOME/.pi/agent/skills/skill-library/business/startup-financial-modeling/SKILL.md`
+- `startup-ideation`: startup ideation — `$HOME/.pi/agent/skills/skill-library/business/startup-ideation/SKILL.md`
+- `startup-metrics-framework`: startup metrics — `$HOME/.pi/agent/skills/skill-library/business/startup-metrics-framework/SKILL.md`
+- `startup-pivoting`: startup pivots — `$HOME/.pi/agent/skills/skill-library/business/startup-pivoting/SKILL.md`
+
+## Emacs
+
+- `emacsclient`: all Emacs operations through emacsclient — `$HOME/.pi/agent/skills/skill-library/emacs/emacs-skills/skills/emacsclient/SKILL.md`
+- `file-links`: format file references as links — `$HOME/.pi/agent/skills/skill-library/emacs/emacs-skills/skills/file-links/SKILL.md`
+- `select`: select Emacs skill — `$HOME/.pi/agent/skills/skill-library/emacs/emacs-skills/skills/select/SKILL.md`
+- `open`: open files in Emacs — `$HOME/.pi/agent/skills/skill-library/emacs/emacs-skills/skills/open/SKILL.md`
+- `plantuml`: create PlantUML diagrams — `$HOME/.pi/agent/skills/skill-library/emacs/emacs-skills/skills/plantuml/SKILL.md`
+- `highlight`: highlight Emacs regions — `$HOME/.pi/agent/skills/skill-library/emacs/emacs-skills/skills/highlight/SKILL.md`
+- `matplotlib`: plot with matplotlib — `$HOME/.pi/agent/skills/skill-library/emacs/emacs-skills/skills/matplotlib/SKILL.md`
+- `mermaid`: create Mermaid diagrams — `$HOME/.pi/agent/skills/skill-library/emacs/emacs-skills/skills/mermaid/SKILL.md`
+- `dired`: open files through Emacs dired — `$HOME/.pi/agent/skills/skill-library/emacs/emacs-skills/skills/dired/SKILL.md`
+- `gnuplot`: plot with gnuplot — `$HOME/.pi/agent/skills/skill-library/emacs/emacs-skills/skills/gnuplot/SKILL.md`
+- `describe`: look up Emacs documentation — `$HOME/.pi/agent/skills/skill-library/emacs/emacs-skills/skills/describe/SKILL.md`
+- `d2`: create D2 diagrams — `$HOME/.pi/agent/skills/skill-library/emacs/emacs-skills/skills/d2/SKILL.md`

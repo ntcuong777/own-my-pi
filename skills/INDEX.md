@@ -32,8 +32,10 @@ Frequent skills stay top-level. `skill-library` is the lazy catalog.
 
 Topics:
 
-- `software-engineering/`
+- `software-engineering/` (includes mattpocock-skills)
 - `languages/`
 - `devops/`
 - `security/`
 - `testing/`
+- `business/`
+- `emacs/`

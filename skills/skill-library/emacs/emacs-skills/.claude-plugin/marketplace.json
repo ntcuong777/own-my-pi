@@ -1,0 +1,29 @@
+{
+  "name": "xenodium-emacs-skills",
+  "owner": {
+    "name": "Alvaro Ramirez",
+    "email": "me@xenodium.com"
+  },
+  "metadata": {
+    "description": "Claude Code skills for Emacs integration",
+    "version": "1.0.0"
+  },
+  "plugins": [
+    {
+      "name": "emacs-skills",
+      "description": "Emacs integration skills including dired buffer management via emacsclient",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/describe",
+        "./skills/dired",
+        "./skills/emacsclient",
+        "./skills/file-links",
+        "./skills/gnuplot",
+        "./skills/highlight",
+        "./skills/open",
+        "./skills/select"
+      ]
+    }
+  ]
+}
