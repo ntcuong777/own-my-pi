@@ -47,5 +47,6 @@
         "model": "openai-codex/gpt-5.6-sol:medium"
       }
     }
-  }
+  },
+  "lastChangelogVersion": "0.85.1"
 }
