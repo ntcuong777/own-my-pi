@@ -13,7 +13,8 @@ and symlinks package names to those trees. Settings packages are local
 paths. No pi install npm at runtime.
 
 Git snapshots: aliou/pi-neuralwatt, fadilsflow/pi-codex-account,
-nicobailon/pi-subagents, samfoy/pi-memory, earendil-works/pi-review.
+nicobailon/pi-subagents, samfoy/pi-memory, earendil-works/pi-review,
+dbachelder/pi-btw.
 Extracted npm plugins: juicesharp rpiv-*, pi-mcp-adapter, pi-hashline-edit,
 pi-smart-compact, pi-lens, pi-ast-grep, pi-antiloop, narumitw/pi-plan-mode.
 
@@ -21,6 +22,12 @@ Plan delegation: pi-subagents. Cheap default models live in settings.json
 under subagents.defaultModel.
 
 GitHub PR review: pi-review (`/review pr 123` checks out via `gh`).
+
+Side conversation: pi-btw (`/btw` opens a parallel sub-session).
+
+Skills also load from ~/.claude/skills and ~/.codex/skills via the
+settings.json `skills` array. ~/.agents/skills is already a Pi global
+root. On a name collision, ~/.pi/agent/skills wins.
 
 The `pi` binary is a Nix-store package (`nix build .#pi`), not `npm install`
 into ~/.local. Flake input `pi` pins github:earendil-works/pi; the derivation

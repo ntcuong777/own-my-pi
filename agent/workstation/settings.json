@@ -17,7 +17,12 @@
     "./vendor/node_modules/pi-codex-account",
     "./vendor/node_modules/pi-subagents",
     "./vendor/node_modules/@samfp/pi-memory",
-    "./vendor/node_modules/@earendil-works/pi-review"
+    "./vendor/node_modules/@earendil-works/pi-review",
+    "./vendor/node_modules/pi-btw"
+  ],
+  "skills": [
+    "~/.claude/skills",
+    "~/.codex/skills"
   ],
   "theme": "dark",
   "compaction": {

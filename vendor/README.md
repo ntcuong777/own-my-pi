@@ -15,7 +15,8 @@ directory to ~/.pi/agent/vendor. node_modules stays gitignored.
 
 Git snapshots include nicobailon/pi-subagents for plan delegation to cheap
 child agents, samfoy/pi-memory (@samfp/pi-memory) for cross-session
-preferences and lessons, and earendil-works/pi-review for `/review` /
-`/end-review` including GitHub PRs via `gh pr checkout`. Default Anthropic
+preferences and lessons, earendil-works/pi-review for `/review` /
+`/end-review` including GitHub PRs via `gh pr checkout`, and
+dbachelder/pi-btw for `/btw` parallel side conversations. Default Anthropic
 consolidation model is a no-op on this stack; host settings.json sets
 memory.consolidationModel.
