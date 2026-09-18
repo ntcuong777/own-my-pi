@@ -13,12 +13,14 @@ and symlinks package names to those trees. Settings packages are local
 paths. No pi install npm at runtime.
 
 Git snapshots: aliou/pi-neuralwatt, fadilsflow/pi-codex-account,
-nicobailon/pi-subagents, samfoy/pi-memory.
+nicobailon/pi-subagents, samfoy/pi-memory, earendil-works/pi-review.
 Extracted npm plugins: juicesharp rpiv-*, pi-mcp-adapter, pi-hashline-edit,
 pi-smart-compact, pi-lens, pi-ast-grep, pi-antiloop, narumitw/pi-plan-mode.
 
 Plan delegation: pi-subagents. Cheap default models live in settings.json
 under subagents.defaultModel.
+
+GitHub PR review: pi-review (`/review pr 123` checks out via `gh`).
 
 The `pi` binary is a Nix-store package (`nix build .#pi`), not `npm install`
 into ~/.local. Flake input `pi` pins github:earendil-works/pi; the derivation

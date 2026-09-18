@@ -38,7 +38,7 @@ fi
 vendor="$(cd "$vendor" && pwd)"
 cd "$vendor"
 
-mkdir -p node_modules/@aliou node_modules/@juicesharp node_modules/@narumitw node_modules/@samfp
+mkdir -p node_modules/@aliou node_modules/@juicesharp node_modules/@narumitw node_modules/@samfp node_modules/@earendil-works
 
 if [ -n "$store" ] && [ -d "$store/node_modules" ] && [ ! -e node_modules/typebox ]; then
   echo "own-my-pi: seeding vendor/node_modules from $store"
@@ -67,6 +67,7 @@ link_pkg() {
 }
 
 link_pkg "@aliou/pi-neuralwatt" "src/pi-neuralwatt"
+link_pkg "@earendil-works/pi-review" "src/pi-review"
 link_pkg "@aliou/pi-utils-settings" "src/pi-utils-settings"
 link_pkg "@aliou/pi-utils-ui" "src/pi-utils-ui"
 link_pkg "@juicesharp/rpiv-ask-user-question" "src/rpiv-ask-user-question"

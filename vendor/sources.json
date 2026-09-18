@@ -80,5 +80,11 @@
     "url": "https://github.com/samfoy/pi-memory",
     "rev": "da1f96d55706db07f39c3767b84890e89298d5f2",
     "version": "1.5.0"
+  },
+  "@earendil-works/pi-review": {
+    "path": "src/pi-review",
+    "url": "https://github.com/earendil-works/pi-review",
+    "rev": "f1de050504936046c0f85b21fec0e0a93ef394eb",
+    "version": "0.1.0"
   }
 }

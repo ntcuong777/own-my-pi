@@ -17,7 +17,7 @@ pkgs.buildNpmPackage {
   makeCacheWritable = true;
   installPhase = ''
     runHook preInstall
-    mkdir -p $out/node_modules/@aliou $out/node_modules/@juicesharp $out/node_modules/@narumitw $out/node_modules/@samfp
+    mkdir -p $out/node_modules/@aliou $out/node_modules/@juicesharp $out/node_modules/@narumitw $out/node_modules/@samfp $out/node_modules/@earendil-works
     cp -a src $out/src
     cp -a node_modules/. $out/node_modules/
     cp package.json package-lock.json $out/
