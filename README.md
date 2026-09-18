@@ -4,12 +4,22 @@ Personal harness for raw Pi.
 
 Owns settings, vendored plugins, custom extensions, agents, and skills.
 
-Plugin source lives in vendor/src/ (extracted trees, no tarballs). Nix installs third-party runtime deps and symlinks package names to those trees. Settings packages are local paths. No pi install npm at runtime.
+Home Manager live-symlinks this checkout into ~/.pi/agent. Edit settings,
+skills, extensions, or vendor/src without a NixOS / nix-darwin rebuild.
 
-Git snapshots: aliou/pi-neuralwatt, fadilsflow/pi-codex-account, nicobailon/pi-subagents.
-Extracted npm plugins: juicesharp rpiv-*, pi-mcp-adapter, pi-hashline-edit, pi-smart-compact, pi-lens, pi-ast-grep, pi-antiloop, narumitw/pi-plan-mode.
+Plugin source lives in vendor/src/ (extracted trees, no tarballs). Nix
+installs third-party runtime deps once into gitignored vendor/node_modules
+and symlinks package names to those trees. Settings packages are local
+paths. No pi install npm at runtime.
 
-Plan delegation: pi-subagents. Cheap default models live in settings.json under subagents.defaultModel.
+Git snapshots: aliou/pi-neuralwatt, fadilsflow/pi-codex-account,
+nicobailon/pi-subagents.
+Extracted npm plugins: juicesharp rpiv-*, pi-mcp-adapter, pi-hashline-edit,
+pi-smart-compact, pi-lens, pi-ast-grep, pi-antiloop, narumitw/pi-plan-mode.
 
-Home Manager: imports = [ inputs.own-my-pi.homeModules.default ]; extra args userhome and isWorkstation.
+Plan delegation: pi-subagents. Cheap default models live in settings.json
+under subagents.defaultModel.
+
+Home Manager: imports = [ inputs.own-my-pi.homeModules.default ]; extra args
+userhome, isWorkstation, harnessRoot.
 Build plugins: nix build .#plugins
