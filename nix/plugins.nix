@@ -11,7 +11,7 @@ pkgs.buildNpmPackage {
       in
       base != "node_modules";
   };
-  npmDepsHash = "sha256-drhIdGFwO48lr9B/RzslGNW3PRhgJXlVDhsEg3l/l+g=";
+  npmDepsHash = "sha256-pEBmh/RrIILJT0tFE+/qQm7qfDJfFMlEtXBIoqM5f8s=";
   dontNpmBuild = true;
   npmFlags = [ "--legacy-peer-deps" ];
   makeCacheWritable = true;
