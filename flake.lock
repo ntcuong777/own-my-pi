@@ -16,9 +16,27 @@
         "type": "github"
       }
     },
+    "pi": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1788609286,
+        "narHash": "sha256-gU8BSiqqOYt2RRuQONHHGvZeSM5KFQVrwif9bmuUXUc=",
+        "owner": "earendil-works",
+        "repo": "pi",
+        "rev": "d981de1229ef899957bbe968bc8dcda02a21f477",
+        "type": "github"
+      },
+      "original": {
+        "owner": "earendil-works",
+        "ref": "v0.85.1",
+        "repo": "pi",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "pi": "pi"
       }
     }
   },

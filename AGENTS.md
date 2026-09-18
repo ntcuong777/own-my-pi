@@ -8,8 +8,9 @@ This repository is the Pi daily-driver harness. It does not depend on any host N
 - vendor/src/ extracted plugin source trees
 - vendor/package-lock.json third-party runtime deps only
 - vendor/link-node-modules.sh first-party node_modules -> src links
-- nix/home-module.nix Home Manager module (live out-of-store symlinks)
+- nix/home-module.nix Home Manager module (live out-of-store symlinks, Nix-store pi)
 - nix/plugins.nix copies src trees and installs transitives (seed vendor/node_modules)
+- nix/pi.nix wraps pinned @earendil-works/pi-coding-agent into the Nix store
 - skills/ Pi skills live-linked to ~/.pi/agent/skills/
 
 ## Live edit
@@ -22,6 +23,10 @@ vendor/node_modules is gitignored. First activation copies third-party deps
 from `nix build .#plugins` and rewrites first-party names to vendor/src.
 After that, replacing a plugin tree is enough. New npm deps still need a
 rebuild or `npm install` in vendor/.
+
+The Pi CLI is `nix build .#pi` / home.packages, pinned by flake input `pi`
+(github:earendil-works/pi). Do not install @earendil-works/pi-coding-agent
+via activation or `npm install -g`.
 
 ## Plugins
 

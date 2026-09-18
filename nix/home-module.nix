@@ -5,7 +5,7 @@
 # harnessRoot (fork/own-my-pi). Pi reads ~/.pi/agent; relative package
 # paths resolve from that directory, not the realpath of settings.json.
 # Extra args: isWorkstation, harnessRoot.
-{ self }:
+{ self, piSrc }:
 {
   config,
   lib,
@@ -18,8 +18,10 @@
 let
   host = if isWorkstation then "workstation" else "laptop";
   plugins = pkgs.callPackage ./plugins.nix { inherit self; };
+  pi = pkgs.callPackage ./pi.nix { inherit piSrc; };
   mkLive = rel: config.lib.file.mkOutOfStoreSymlink "${harnessRoot}/${rel}";
   linker = "${harnessRoot}/vendor/link-node-modules.sh";
+  homeDir = config.home.homeDirectory;
 in
 {
   assertions = [
@@ -28,6 +30,8 @@ in
       message = "own-my-pi home module needs harnessRoot (live fork/own-my-pi checkout).";
     }
   ];
+
+  home.packages = [ pi ];
 
   home.file = {
     ".pi/agent/settings.json".source = mkLive "agent/${host}/settings.json";
@@ -42,6 +46,20 @@ in
     ".pi/agent/vendor".source = mkLive "vendor";
     ".local/bin/pi-personal".source = mkLive "agent/bin/pi-personal";
   };
+
+  # ~/.local/bin is prepended to PATH. A leftover npm launcher would hide
+  # the Nix-store pi from home.packages.
+  home.activation.unshadowLocalNpmPi = lib.hm.dag.entryBefore [ "linkGeneration" ] ''
+    bin=${lib.escapeShellArg "${homeDir}/.local/bin/pi"}
+    pkg=${lib.escapeShellArg "${homeDir}/.local/lib/node_modules/@earendil-works/pi-coding-agent"}
+    if [ -e "$bin" ] || [ -L "$bin" ]; then
+      echo "[own-my-pi] removing user-local npm pi so Nix-store pi is on PATH" >&2
+      $DRY_RUN_CMD rm -f "$bin"
+    fi
+    if [ -e "$pkg" ]; then
+      $DRY_RUN_CMD rm -rf "$pkg"
+    fi
+  '';
 
   # Seed gitignored vendor/node_modules from the plugins derivation once,
   # then keep first-party names pointed at live vendor/src.

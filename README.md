@@ -20,6 +20,12 @@ pi-smart-compact, pi-lens, pi-ast-grep, pi-antiloop, narumitw/pi-plan-mode.
 Plan delegation: pi-subagents. Cheap default models live in settings.json
 under subagents.defaultModel.
 
+The `pi` binary is a Nix-store package (`nix build .#pi`), not `npm install`
+into ~/.local. Flake input `pi` pins github:earendil-works/pi; the derivation
+wraps the matching published @earendil-works/pi-coding-agent tarball (prebuilt
+dist + npm-shrinkwrap). Home Manager puts it on PATH and removes a leftover
+~/.local/bin/pi so the user-local prefix cannot shadow it.
+
 Home Manager: imports = [ inputs.own-my-pi.homeModules.default ]; extra args
 userhome, isWorkstation, harnessRoot.
-Build plugins: nix build .#plugins
+Build: nix build .#pi ; nix build .#plugins
