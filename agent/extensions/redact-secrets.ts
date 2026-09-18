@@ -14,13 +14,20 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
  * logs and source. This is not a sandbox.
  */
 
+type RedactumFinding = {
+	category?: string;
+	value?: string;
+	match?: string;
+	text?: string;
+};
+
 type RedactumFn = (
 	text: string,
 	options?: {
 		replacement?: string;
 		categories?: Record<string, boolean>;
 	},
-) => { redactedText: string; findings?: unknown[] } | string;
+) => { redactedText: string; findings?: RedactumFinding[] } | string;
 
 const SECRET_CATEGORIES: Record<string, boolean> = {
 	EMAIL: false,
@@ -66,17 +73,128 @@ function loadRedactum(): RedactumFn | undefined {
 
 const redactum = loadRedactum();
 
+const CATEGORY_ABBREV: Record<string, string> = {
+	API_KEY: "ak",
+	AWS_KEY: "aws",
+	PRIVATE_KEY: "pk",
+	DATABASE_CREDENTIALS: "db",
+	DEV_SECRET: "ds",
+};
+
+export const PLACEHOLDER_RE = /<redacted:([a-z]+)(\d+)>/g;
+
+const tokenToSecret = new Map<string, string>();
+const secretToToken = new Map<string, string>();
+const counters = new Map<string, number>();
+
+export function resetRedactionRegistry(): void {
+	tokenToSecret.clear();
+	secretToToken.clear();
+	counters.clear();
+}
+
+function abbrev(category: string): string {
+	return CATEGORY_ABBREV[category] ?? "sec";
+}
+
+/**
+ * Mint (or reuse) a unique placeholder for one secret.
+ *
+ * Uniqueness is the point: a shared "<redacted>" destroys the distinction
+ * between two different keys, which is exactly how an anchored edit can be
+ * aimed at the wrong occurrence.
+ */
+export function mintToken(category: string, secret: string): string {
+	const existing = secretToToken.get(secret);
+	if (existing) return existing;
+	const prefix = abbrev(category);
+	const next = (counters.get(prefix) ?? 0) + 1;
+	counters.set(prefix, next);
+	const token = `<redacted:${prefix}${next}>`;
+	secretToToken.set(secret, token);
+	tokenToSecret.set(token, secret);
+	return token;
+}
+
+export function lookupSecret(token: string): string | undefined {
+	return tokenToSecret.get(token);
+}
+
+export function containsPlaceholder(value: string): boolean {
+	PLACEHOLDER_RE.lastIndex = 0;
+	return PLACEHOLDER_RE.test(value);
+}
+
 export function redactText(input: string): { text: string; hits: number } {
 	if (!redactum) return { text: input, hits: 0 };
-	const result = redactum(input, {
-		replacement: "<redacted>",
-		categories: SECRET_CATEGORIES,
-	});
-	const text = typeof result === "string" ? result : result.redactedText;
-	if (typeof result === "object" && result && Array.isArray(result.findings)) {
-		return { text, hits: result.findings.length };
+	const result = redactum(input, { categories: SECRET_CATEGORIES });
+	if (typeof result === "string") {
+		// No findings metadata: fall back to the opaque single-token form.
+		return { text: result, hits: result === input ? 0 : 1 };
 	}
-	return { text, hits: text === input ? 0 : 1 };
+
+	const findings = result.findings ?? [];
+	const values = new Map<string, string>();
+	for (const finding of findings) {
+		const secret = finding.value ?? finding.match ?? finding.text;
+		if (typeof secret !== "string" || secret.length === 0) continue;
+		values.set(secret, finding.category ?? "DEV_SECRET");
+	}
+	if (values.size === 0) {
+		return { text: input, hits: 0 };
+	}
+
+	let text = input;
+	let hits = 0;
+	for (const secret of [...values.keys()].sort((a, b) => b.length - a.length)) {
+		const token = mintToken(values.get(secret)!, secret);
+		if (!text.includes(secret)) continue;
+		text = text.split(secret).join(token);
+		hits += 1;
+	}
+	return { text, hits };
+}
+
+/**
+ * Swap placeholders back to the real secret before a tool writes to disk.
+ *
+ * Hashline matches disk bytes, so the file itself was never redacted; only the
+ * model's view was. Without this, a replacement payload quoting the redacted
+ * line would overwrite a live secret with "<redacted:ak1>".
+ */
+export function restorePlaceholders(value: unknown): {
+	value: unknown;
+	restored: number;
+	unresolved: string[];
+} {
+	let restored = 0;
+	const unresolved: string[] = [];
+
+	const walk = (node: unknown): unknown => {
+		if (typeof node === "string") {
+			if (!containsPlaceholder(node)) return node;
+			return node.replace(PLACEHOLDER_RE, (match) => {
+				const secret = lookupSecret(match);
+				if (secret === undefined) {
+					unresolved.push(match);
+					return match;
+				}
+				restored += 1;
+				return secret;
+			});
+		}
+		if (Array.isArray(node)) return node.map(walk);
+		if (node && typeof node === "object") {
+			const out: Record<string, unknown> = {};
+			for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+				out[k] = walk(v);
+			}
+			return out;
+		}
+		return node;
+	};
+
+	return { value: walk(value), restored, unresolved };
 }
 
 function redactAny(value: unknown, hit: { n: number }): unknown {
@@ -100,6 +218,33 @@ export default function (pi: ExtensionAPI) {
 		console.warn("[redact-secrets] disabled: install redactum in vendor/");
 		return;
 	}
+
+	const MUTATING_TOOLS = new Set(["edit", "write", "insert", "replace"]);
+
+	pi.on("session_start", async () => {
+		resetRedactionRegistry();
+	});
+
+	pi.on("tool_call", async (event, ctx) => {
+		if (!MUTATING_TOOLS.has(event.toolName)) return;
+		const input = event.input as Record<string, unknown> | undefined;
+		if (!input) return;
+
+		const out = restorePlaceholders(input);
+		if (out.restored > 0) {
+			for (const [k, v] of Object.entries(out.value as Record<string, unknown>)) {
+				input[k] = v;
+			}
+			ctx.ui.setStatus("redact-secrets", `restored ${out.restored}`);
+		}
+		if (out.unresolved.length > 0) {
+			return {
+				block: true,
+				reason: `[E_REDACT_PLACEHOLDER] This ${event.toolName} payload contains redaction placeholders this session cannot resolve (${out.unresolved.join(", ")}). Writing them would replace a live secret with a placeholder. Re-read the file and send the literal content, or edit a range that excludes the secret.`,
+			};
+		}
+		return;
+	});
 
 	pi.on("tool_result", async (event) => {
 		const hit = { n: 0 };
