@@ -66,6 +66,13 @@ Subagent (general-purpose):
 
     Work from: [directory]
 
+    ## Exclusive files (binding)
+
+    You may write only: [FILE_SET]
+    Sibling tasks in this wave (do not touch their files): [SIBLING_TASKS]
+    If you need a file outside that set, stop and report NEEDS_CONTEXT. Do not
+    "just edit it". Other implementers may be writing those paths right now.
+
     **While you work:** If you encounter something unexpected or unclear, **ask questions**.
     Don't guess or make assumptions.
 
