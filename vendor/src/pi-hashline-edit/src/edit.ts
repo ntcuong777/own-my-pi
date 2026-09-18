@@ -117,6 +117,22 @@ const hashlinePrependEditSchema = Type.Object(
 	{ additionalProperties: false },
 );
 
+const hashlineInsertEditSchema = Type.Object(
+	{
+		op: literalStringSchema("insert", {
+			description: "insert lines before or after an anchor",
+		}),
+		pos: Type.String({ description: "anchor (LINE#HASH from read)" }),
+		direction: Type.Unsafe<"before" | "after">({
+			type: "string",
+			enum: ["before", "after"],
+			description: '"before" maps to prepend, "after" maps to append',
+		}),
+		lines: hashlineEditLinesSchema,
+	},
+	{ additionalProperties: false },
+);
+
 const hashlineReplaceTextEditSchema = Type.Object(
 	{
 		op: literalStringSchema("replace_text", {
@@ -136,6 +152,7 @@ const hashlineEditItemSchema = Type.Union(
 		hashlineReplaceEditSchema,
 		hashlineAppendEditSchema,
 		hashlinePrependEditSchema,
+		hashlineInsertEditSchema,
 		hashlineReplaceTextEditSchema,
 	],
 	{
@@ -150,6 +167,7 @@ const hashlineEditItemSchemaNoReplaceText = Type.Union(
 		hashlineReplaceEditSchema,
 		hashlineAppendEditSchema,
 		hashlinePrependEditSchema,
+		hashlineInsertEditSchema,
 	],
 	{
 		description:

@@ -25,6 +25,7 @@ export type HashlineToolEdit = {
 	op: string;
 	pos?: string;
 	end?: string;
+	direction?: string;
 	lines?: string[];
 	oldText?: string;
 	newText?: string;
@@ -269,7 +270,7 @@ function hashlineParseText(
  * - no anchors → file-level append/prepend (only for those ops)
  */
 
-const ITEM_KEYS = new Set(["op", "pos", "end", "lines", "oldText", "newText"]);
+const ITEM_KEYS = new Set(["op", "pos", "end", "direction", "lines", "oldText", "newText"]);
 
 function isStringArray(value: unknown): value is string[] {
 	return (
@@ -292,10 +293,11 @@ function assertEditItem(edit: Record<string, unknown>, index: number): void {
 		edit.op !== "replace" &&
 		edit.op !== "append" &&
 		edit.op !== "prepend" &&
-		edit.op !== "replace_text"
+		edit.op !== "replace_text" &&
+		edit.op !== "insert"
 	) {
 		throw new Error(
-			`[E_BAD_OP] Edit ${index} uses unknown op "${edit.op}". Expected "replace", "append", "prepend", or "replace_text".`,
+			`[E_BAD_OP] Edit ${index} uses unknown op "${edit.op}". Expected "replace", "append", "prepend", "insert", or "replace_text".`,
 		);
 	}
 
@@ -307,6 +309,16 @@ function assertEditItem(edit: Record<string, unknown>, index: number): void {
 	if ("end" in edit && typeof edit.end !== "string") {
 		throw new Error(
 			`Edit ${index} field "end" must be a string when provided.`,
+		);
+	}
+	if ("direction" in edit && typeof edit.direction !== "string") {
+		throw new Error(
+			`Edit ${index} field "direction" must be a string when provided.`,
+		);
+	}
+	if (edit.op !== "insert" && "direction" in edit) {
+		throw new Error(
+			`[E_BAD_OP] Edit ${index} with op "${edit.op}" does not support "direction". Use op "insert" with direction "before" or "after".`,
 		);
 	}
 	if ("oldText" in edit && typeof edit.oldText !== "string") {
@@ -358,6 +370,24 @@ function assertEditItem(edit: Record<string, unknown>, index: number): void {
 			`[E_BAD_OP] Edit ${index} with op "${edit.op}" does not support "end". Use "pos" or omit it for file boundary insertion.`,
 		);
 	}
+
+	if (edit.op === "insert") {
+		if (typeof edit.pos !== "string") {
+			throw new Error(
+				`[E_BAD_OP] Edit ${index} with op "insert" requires a "pos" anchor string.`,
+			);
+		}
+		if (edit.direction !== "before" && edit.direction !== "after") {
+			throw new Error(
+				`[E_BAD_OP] Edit ${index} with op "insert" requires "direction" to be "before" or "after".`,
+			);
+		}
+		if ("end" in edit) {
+			throw new Error(
+				`[E_BAD_OP] Edit ${index} with op "insert" does not support "end".`,
+			);
+		}
+	}
 }
 
 export function resolveEditAnchors(
@@ -401,6 +431,15 @@ export function resolveEditAnchors(
 					op: "replace_text",
 					oldText: normalizeExactText(edit.oldText)!,
 					newText: normalizeExactText(edit.newText)!,
+				});
+				break;
+			}
+			case "insert": {
+				// apply.ts never sees op:"insert" — desugar to prepend/append.
+				result.push({
+					op: edit.direction === "before" ? "prepend" : "append",
+					pos: parseAnchorRef(edit.pos!),
+					lines: hashlineParseText(edit.lines, stripCount),
 				});
 				break;
 			}
