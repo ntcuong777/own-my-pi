@@ -1,0 +1,6 @@
+{
+  "hashLength": 2,
+  "grep": true,
+  "replaceText": false,
+  "boundaryDedup": "on"
+}

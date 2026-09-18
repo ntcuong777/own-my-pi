@@ -40,6 +40,7 @@ in
     ".pi/agent/spawn.json".source = mkLive "agent/${host}/spawn.json";
     ".pi/agent/compaction.json".source = mkLive "agent/${host}/compaction.json";
     ".pi/agent/personal.json".source = mkLive "agent/shared/personal.json";
+    ".pi/agent/hashline.json".source = mkLive "agent/shared/hashline.json";
     ".pi/agent/agents".source = mkLive "agent/agents";
     ".pi/agent/extensions".source = mkLive "agent/extensions";
     ".pi/agent/skills".source = mkLive "skills";
