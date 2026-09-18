@@ -6,3 +6,8 @@ sessions/
 web-allow.json
 codex-accounts.json
 vendor/node_modules/
+
+# Agent git worktrees (linked checkouts, not source)
+.worktrees/
+vendor/node_modules
+.superpowers/
