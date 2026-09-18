@@ -13,6 +13,13 @@ This repository is the Pi daily-driver harness. It does not depend on any host N
 - nix/pi.nix wraps pinned @earendil-works/pi-coding-agent into the Nix store
 - skills/ Pi skills live-linked to ~/.pi/agent/skills/
 
+## Skills
+
+`skills/` is live-linked to ~/.pi/agent/skills. Pi also auto-loads
+~/.agents/skills. Host settings.json adds ~/.claude/skills and
+~/.codex/skills so Claude Code and Codex skills are available too.
+Name collisions keep the first skill found; this tree wins.
+
 ## Live edit
 
 Home Manager points ~/.pi/agent/{settings,skills,extensions,agents,vendor} at this

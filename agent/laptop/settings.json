@@ -20,6 +20,10 @@
     "./vendor/node_modules/@earendil-works/pi-review",
     "./vendor/node_modules/pi-btw"
   ],
+  "skills": [
+    "~/.claude/skills",
+    "~/.codex/skills"
+  ],
   "theme": "dark",
   "compaction": {
     "enabled": true

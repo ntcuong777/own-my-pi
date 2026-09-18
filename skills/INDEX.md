@@ -1,6 +1,8 @@
 # Skill Index
 
-Pi loads these from `$HOME/.pi/agent/skills`.
+Pi loads these from `$HOME/.pi/agent/skills`. Host `settings.json` also
+points at `$HOME/.claude/skills` and `$HOME/.codex/skills`. Pi already
+scans `$HOME/.agents/skills`. On a name collision, this tree wins.
 
 Frequent skills stay top-level. `skill-library` is the lazy catalog.
 
