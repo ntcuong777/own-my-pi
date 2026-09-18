@@ -1,0 +1,538 @@
+import type { Component } from "@earendil-works/pi-tui";
+import {
+  Input,
+  Key,
+  matchesKey,
+  type SettingItem,
+  type SettingsListTheme,
+  truncateToWidth,
+  visibleWidth,
+  wrapTextWithAnsi,
+} from "@earendil-works/pi-tui";
+
+/**
+ * A sectioned settings list. Items are grouped under section headers.
+ * Cursor skips section headers and only lands on items.
+ *
+ * Supports the same SettingItem interface as pi-tui's SettingsList,
+ * including value cycling and submenus. Submenu factories also receive
+ * a `{ requestRender }` context so async submenus can trigger redraws.
+ */
+
+/** Context passed to submenu factories so they can request a redraw or a save. */
+export interface SettingsSubmenuContext {
+  requestRender: () => void;
+  /** Ask the host to save. No-op outside registerSettingsCommand. */
+  requestSave?: () => void;
+  /**
+   * True when the host renders its own controls/shortcut line (e.g.
+   * registerSettingsCommand's panel). Submenus with a built-in hint footer
+   * (like SettingsDetailEditor) should forward this to their `hideHint`
+   * option so exactly one shortcut line is visible at a time.
+   */
+  hideHint?: boolean;
+}
+
+/**
+ * A submenu component hosted by SectionedSettings. Submenus may implement
+ * `getShortcuts()` to expose the shortcuts they currently respond to, so a
+ * host panel can show them in its own controls line while the submenu is
+ * open.
+ */
+export interface SettingsSubmenuComponent extends Component {
+  getShortcuts?(): string | undefined;
+}
+
+/** Setting item used by SectionedSettings, with a richer submenu contract. */
+export type SectionedSettingItem = Omit<SettingItem, "submenu"> & {
+  submenu?: (
+    currentValue: string,
+    done: (selectedValue?: string) => void,
+    ctx: SettingsSubmenuContext,
+  ) => SettingsSubmenuComponent;
+};
+
+export interface SettingsSection {
+  label: string;
+  items: SectionedSettingItem[];
+}
+
+export interface SectionedSettingsOptions {
+  enableSearch?: boolean;
+  /** Extra text appended to the hint line (e.g. "Ctrl+S to save"). */
+  hintSuffix?: string;
+  /** Hide the built-in hint line (when the parent renders its own controls). */
+  hideHint?: boolean;
+  /**
+   * Render hook for submenus that load data asynchronously.
+   * If omitted, async submenus can still be used, but they cannot request a redraw.
+   */
+  requestRender?: () => void;
+  /**
+   * Save hook invoked on Ctrl+S. Only useful when SectionedSettings is used
+   * standalone; registerSettingsCommand intercepts Ctrl+S at the root.
+   */
+  requestSave?: () => void;
+  /**
+   * Fixed number of lines for the rendered content.
+   * When set, the item list window shrinks to make room for the selected
+   * item's fully wrapped description: the description (never truncated)
+   * is bottom-anchored just above the hint line, and blank padding fills
+   * the space between the list and the description so the content totals
+   * exactly this many lines. When unset (or 0), the content grows with
+   * the list and the description is rendered directly after it (legacy
+   * behavior).
+   */
+  contentHeight?: number;
+}
+
+interface FlatEntry {
+  type: "section" | "item";
+  sectionLabel?: string;
+  item?: SectionedSettingItem;
+}
+
+export class SectionedSettings implements Component {
+  private sections: SettingsSection[];
+  private flatEntries: FlatEntry[];
+  private filteredEntries: FlatEntry[];
+  private theme: SettingsListTheme;
+  private selectedIndex: number; // index into selectable items only
+  private maxVisible: number;
+  private onChange: (id: string, newValue: string) => void;
+  private onCancel: () => void;
+  private searchInput?: Input;
+  private searchEnabled: boolean;
+  private hintSuffix: string;
+  private hideHint: boolean;
+  private requestRender: () => void;
+  private requestSave: () => void;
+  private contentHeight: number;
+  private submenuComponent: SettingsSubmenuComponent | null = null;
+  private submenuItemIndex: number | null = null;
+
+  constructor(
+    sections: SettingsSection[],
+    maxVisible: number,
+    theme: SettingsListTheme,
+    onChange: (id: string, newValue: string) => void,
+    onCancel: () => void,
+    options: SectionedSettingsOptions = {},
+  ) {
+    this.sections = sections;
+    this.maxVisible = maxVisible;
+    this.theme = theme;
+    this.onChange = onChange;
+    this.onCancel = onCancel;
+    this.searchEnabled = options.enableSearch ?? false;
+    this.hintSuffix = options.hintSuffix ?? "";
+    this.hideHint = options.hideHint ?? false;
+    this.requestRender = options.requestRender ?? (() => {});
+    this.requestSave = options.requestSave ?? (() => {});
+    this.contentHeight = options.contentHeight ?? 0;
+    this.selectedIndex = 0;
+
+    if (this.searchEnabled) {
+      this.searchInput = new Input();
+    }
+
+    this.flatEntries = this.buildFlatEntries(sections);
+    this.filteredEntries = this.flatEntries;
+  }
+
+  private buildFlatEntries(sections: SettingsSection[]): FlatEntry[] {
+    const entries: FlatEntry[] = [];
+    for (const section of sections) {
+      entries.push({ type: "section", sectionLabel: section.label });
+      for (const item of section.items) {
+        entries.push({ type: "item", item });
+      }
+    }
+    return entries;
+  }
+
+  private getSelectableItems(): SectionedSettingItem[] {
+    return this.filteredEntries
+      .filter((e) => e.type === "item" && e.item)
+      .map((e) => e.item as SectionedSettingItem);
+  }
+
+  /**
+   * Replace all sections while preserving the cursor position.
+   * The cursor is restored by matching the previously selected item's ID.
+   * If the item no longer exists, the index is clamped to the valid range.
+   *
+   * Use this instead of creating a new SectionedSettings instance when
+   * only values or item counts change (e.g., after saving a setting).
+   */
+  updateSections(sections: SettingsSection[]): void {
+    const currentId = this.getSelectableItems()[this.selectedIndex]?.id;
+
+    this.sections = sections;
+    this.flatEntries = this.buildFlatEntries(sections);
+    this.filterEntries(this.searchInput?.getValue() ?? "");
+
+    // Restore cursor by item ID.
+    if (currentId) {
+      const items = this.getSelectableItems();
+      const idx = items.findIndex((i) => i.id === currentId);
+      if (idx >= 0) {
+        this.selectedIndex = idx;
+        return;
+      }
+    }
+
+    // Fallback: clamp to valid range.
+    const count = this.getSelectableItems().length;
+    this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, count - 1));
+  }
+
+  updateValue(id: string, newValue: string): void {
+    for (const section of this.sections) {
+      const item = section.items.find((i) => i.id === id);
+      if (item) {
+        item.currentValue = newValue;
+        return;
+      }
+    }
+  }
+
+  /** Returns true when a submenu is open (caller should not intercept input). */
+  hasActiveSubmenu(): boolean {
+    return this.submenuComponent !== null;
+  }
+
+  /**
+   * Shortcuts exposed by the active submenu, if any. Returns undefined when
+   * no submenu is open or the submenu does not implement `getShortcuts()`,
+   * in which case the host should show its default controls line.
+   */
+  getActiveSubmenuShortcuts(): string | undefined {
+    return this.submenuComponent?.getShortcuts?.();
+  }
+
+  invalidate(): void {
+    this.submenuComponent?.invalidate?.();
+  }
+
+  render(width: number): string[] {
+    const lines = this.submenuComponent
+      ? this.submenuComponent.render(width)
+      : this.renderMainList(width);
+    // The main list manages its own height via the flex layout when
+    // contentHeight is set; this pads what does not (submenus, empty
+    // filter results) so the panel still totals contentHeight lines.
+    for (let i = lines.length; i < this.contentHeight; i++) {
+      lines.push("");
+    }
+    return lines;
+  }
+
+  private renderMainList(width: number): string[] {
+    const lines: string[] = [];
+
+    if (this.searchEnabled && this.searchInput) {
+      lines.push(...this.searchInput.render(width));
+      lines.push("");
+    }
+
+    const allItems = this.getSelectableItems();
+
+    if (allItems.length === 0) {
+      lines.push(
+        this.theme.hint(
+          this.searchEnabled
+            ? "  No matching settings"
+            : "  No settings available",
+        ),
+      );
+      this.addHintLine(lines);
+      return lines;
+    }
+
+    // Calculate max label width for alignment
+    const maxLabelWidth = Math.min(
+      30,
+      Math.max(...allItems.map((item) => visibleWidth(item.label))),
+    );
+
+    // Build visible entries with their "selectable index"
+    let selectableIdx = -1;
+    const rendered: Array<{
+      line: string;
+      isSelected: boolean;
+      description?: string;
+    }> = [];
+
+    for (const entry of this.filteredEntries) {
+      if (entry.type === "section") {
+        // Section header - add blank line before (except first)
+        if (rendered.length > 0) {
+          rendered.push({ line: "", isSelected: false });
+        }
+        rendered.push({
+          line: this.theme.hint(`  ${entry.sectionLabel}`),
+          isSelected: false,
+        });
+        continue;
+      }
+
+      const item = entry.item;
+      if (!item) continue;
+
+      selectableIdx++;
+      const isSelected = selectableIdx === this.selectedIndex;
+      const prefix = isSelected ? this.theme.cursor : "  ";
+      const prefixWidth = visibleWidth(prefix);
+
+      const labelPadded =
+        item.label +
+        " ".repeat(Math.max(0, maxLabelWidth - visibleWidth(item.label)));
+      const labelText = this.theme.label(labelPadded, isSelected);
+
+      const separator = "  ";
+      const usedWidth = prefixWidth + maxLabelWidth + visibleWidth(separator);
+      const valueMaxWidth = width - usedWidth - 2;
+      const valueText = this.theme.value(
+        truncateToWidth(String(item.currentValue ?? ""), valueMaxWidth, ""),
+        isSelected,
+      );
+
+      rendered.push({
+        line: prefix + labelText + separator + valueText,
+        isSelected,
+        description: isSelected ? item.description : undefined,
+      });
+    }
+
+    // Description block for the selected item: a blank separator plus
+    // the fully wrapped description. Computed before the list window so
+    // the window can shrink to make room for it; never truncated.
+    const selectedItem = allItems[this.selectedIndex];
+    const descriptionBlock: string[] = [];
+    if (selectedItem?.description) {
+      descriptionBlock.push("");
+      const wrappedDesc = wrapTextWithAnsi(selectedItem.description, width - 4);
+      for (const line of wrappedDesc) {
+        descriptionBlock.push(this.theme.description(`  ${line}`));
+      }
+    }
+
+    // Fixed layout: the list window flexes around the description block
+    // and the chrome (search input, scroll indicator, hint line) so the
+    // content totals exactly contentHeight lines. The scroll indicator
+    // only consumes a line when scrolling is actually needed, so the
+    // window is recomputed once if it appears (avoiding an off-by-one
+    // oscillation). Extreme case: when the description plus chrome alone
+    // exceed contentHeight, the list floor is 1 line and the total may
+    // exceed contentHeight — the description is never truncated even then.
+    const hintHeight = this.hideHint ? 0 : 2;
+    let visibleWindow = this.maxVisible;
+    if (this.contentHeight > 0) {
+      const budget =
+        this.contentHeight -
+        lines.length -
+        hintHeight -
+        descriptionBlock.length;
+      visibleWindow = Math.max(1, Math.min(this.maxVisible, budget));
+      if (rendered.length > visibleWindow) {
+        visibleWindow = Math.max(1, visibleWindow - 1);
+      }
+    }
+
+    // Scrolling: find the rendered index of the selected item
+    const selectedRenderedIdx = rendered.findIndex((r) => r.isSelected);
+    const totalLines = rendered.length;
+    const startLine = Math.max(
+      0,
+      Math.min(
+        selectedRenderedIdx - Math.floor(visibleWindow / 2),
+        totalLines - visibleWindow,
+      ),
+    );
+    const endLine = Math.min(startLine + visibleWindow, totalLines);
+
+    for (let i = startLine; i < endLine; i++) {
+      const r = rendered[i];
+      if (r) lines.push(r.line);
+    }
+
+    // Scroll indicator
+    if (startLine > 0 || endLine < totalLines) {
+      lines.push(
+        this.theme.hint(`  (${this.selectedIndex + 1}/${allItems.length})`),
+      );
+    }
+
+    if (this.contentHeight > 0) {
+      // Bottom-anchor the description: padding goes between the list and
+      // the description block, so the description's last line always sits
+      // just above the hint line. When the selected item has no
+      // description, the padding absorbs the space instead.
+      for (
+        let i = lines.length + descriptionBlock.length + hintHeight;
+        i < this.contentHeight;
+        i++
+      ) {
+        lines.push("");
+      }
+    }
+    lines.push(...descriptionBlock);
+
+    if (!this.hideHint) {
+      this.addHintLine(lines);
+    }
+    return lines;
+  }
+
+  handleInput(data: string): void {
+    if (this.submenuComponent) {
+      if (matchesKey(data, Key.ctrl("s"))) {
+        this.requestSave();
+        return;
+      }
+      this.submenuComponent.handleInput?.(data);
+      return;
+    }
+
+    const items = this.getSelectableItems();
+
+    if (matchesKey(data, Key.ctrl("s"))) {
+      this.requestSave();
+    } else if (matchesKey(data, Key.up)) {
+      if (items.length === 0) return;
+      this.selectedIndex =
+        this.selectedIndex === 0 ? items.length - 1 : this.selectedIndex - 1;
+    } else if (matchesKey(data, Key.down)) {
+      if (items.length === 0) return;
+      this.selectedIndex =
+        this.selectedIndex === items.length - 1 ? 0 : this.selectedIndex + 1;
+    } else if (matchesKey(data, Key.enter) || data === " ") {
+      this.activateItem();
+    } else if (matchesKey(data, Key.escape)) {
+      this.onCancel();
+    } else if (this.searchEnabled && this.searchInput) {
+      const sanitized = data.replace(/ /g, "");
+      if (!sanitized) return;
+      this.searchInput.handleInput(sanitized);
+      this.applyFilter(this.searchInput.getValue());
+    }
+  }
+
+  private activateItem(): void {
+    const items = this.getSelectableItems();
+    const item = items[this.selectedIndex];
+    if (!item) return;
+
+    if (item.submenu) {
+      this.submenuItemIndex = this.selectedIndex;
+      this.submenuComponent = item.submenu(
+        item.currentValue,
+        (selectedValue) => {
+          if (selectedValue !== undefined) {
+            item.currentValue = selectedValue;
+          }
+          this.closeSubmenu();
+          if (selectedValue !== undefined) {
+            this.onChange(item.id, selectedValue);
+          }
+          this.requestRender();
+        },
+        {
+          requestRender: this.requestRender,
+          requestSave: this.requestSave,
+          hideHint: this.hideHint,
+        },
+      );
+    } else if (item.values && item.values.length > 0) {
+      const currentIndex = item.values.indexOf(item.currentValue);
+      const nextIndex = (currentIndex + 1) % item.values.length;
+      const newValue = item.values[nextIndex] as string;
+      item.currentValue = newValue;
+      this.onChange(item.id, newValue);
+    }
+  }
+
+  private closeSubmenu(): void {
+    this.submenuComponent = null;
+    if (this.submenuItemIndex !== null) {
+      this.selectedIndex = this.submenuItemIndex;
+      this.submenuItemIndex = null;
+    }
+  }
+
+  /**
+   * Apply search filter to entries without resetting the cursor.
+   * Used by updateSections() to preserve selection.
+   *
+   * Matches on both item labels and section labels. When a section label
+   * matches, all items in that section are included.
+   */
+  private filterEntries(query: string): void {
+    if (!query) {
+      this.filteredEntries = this.flatEntries;
+      return;
+    }
+
+    const q = query.toLowerCase();
+    const filtered: FlatEntry[] = [];
+    let currentSection: FlatEntry | null = null;
+    let sectionLabelMatches = false;
+    let sectionHasMatch = false;
+    let sectionItems: FlatEntry[] = [];
+
+    const flushSection = () => {
+      if (sectionLabelMatches && currentSection) {
+        // Section label matched: include header + all items
+        filtered.push(currentSection);
+        filtered.push(...sectionItems);
+      } else if (sectionHasMatch && currentSection) {
+        // Only some items matched: include header + matched items
+        filtered.push(currentSection);
+        for (const item of sectionItems) {
+          if (item.item?.label.toLowerCase().includes(q)) {
+            filtered.push(item);
+          }
+        }
+      }
+    };
+
+    for (const entry of this.flatEntries) {
+      if (entry.type === "section") {
+        flushSection();
+        currentSection = entry;
+        sectionLabelMatches = (entry.sectionLabel ?? "")
+          .toLowerCase()
+          .includes(q);
+        sectionHasMatch = sectionLabelMatches;
+        sectionItems = [];
+        continue;
+      }
+
+      if (entry.item) {
+        sectionItems.push(entry);
+        if (entry.item.label.toLowerCase().includes(q)) {
+          sectionHasMatch = true;
+        }
+      }
+    }
+    flushSection();
+
+    this.filteredEntries = filtered;
+  }
+
+  /** Apply search filter and reset cursor to the first item. */
+  private applyFilter(query: string): void {
+    this.filterEntries(query);
+    this.selectedIndex = 0;
+  }
+
+  private addHintLine(lines: string[]): void {
+    const suffix = this.hintSuffix ? ` \u00B7 ${this.hintSuffix}` : "";
+    const base = this.searchEnabled
+      ? "  Type to search \u00B7 Enter/Space to change \u00B7 Esc to close"
+      : "  Enter/Space to change \u00B7 Esc to close";
+    lines.push("");
+    lines.push(this.theme.hint(base + suffix));
+  }
+}

@@ -1,0 +1,573 @@
+![banner](https://assets.aliou.me/github/aliou/pi-utils-settings/banner.png)
+
+# @aliou/pi-utils-settings
+
+Shared settings infrastructure for [pi](https://github.com/mariozechner/pi-coding-agent) extensions. Provides config loading, a settings UI command with scope tabs plus optional extra tabs, and reusable TUI components.
+
+This is a utility library, not a pi extension. It is meant to be used as a dependency by extensions that need a settings UI or JSON config management.
+
+## Install
+
+```bash
+pnpm add @aliou/pi-utils-settings
+```
+
+## API
+
+### ConfigLoader
+
+Generic JSON config loader with global + local (project) scopes, deep merge, and versioned migrations.
+
+```typescript
+import { ConfigLoader, type Migration } from "@aliou/pi-utils-settings";
+
+interface MyConfig {
+  features?: { darkMode?: boolean };
+}
+
+interface ResolvedConfig {
+  features: { darkMode: boolean };
+}
+
+const migrations: Migration<MyConfig>[] = [
+  {
+    name: "v1-upgrade",
+    shouldRun: (config) => !config.features,
+    run: (config, _filePath) => ({ ...config, features: {} }),
+  },
+];
+
+const configLoader = new ConfigLoader<MyConfig, ResolvedConfig>(
+  "my-extension", // reads ~/.pi/agent/extensions/my-extension.json + .pi/extensions/my-extension.json
+  { features: { darkMode: false } }, // defaults
+  { migrations },
+);
+
+await configLoader.load();
+const config = configLoader.getConfig(); // ResolvedConfig (defaults merged with global + local)
+```
+
+#### Versioned migrations
+
+Migrations can declare a monotonic `version`: a non-negative integer or a semver string (e.g. the extension's package version, `"1.2.0"`; no prerelease tags). When set, `shouldRun` defaults to "config version < migration version" and the loader stamps the config file with the highest applied version. All versioned migrations in one loader must use the same scheme — mixing integers and semver strings throws at construction. Extensions already stamping integers should keep integers (a stamped `3` reads as `3.0.0` under semver). `shouldRun`, `run`, and the message factory receive a `MigrationContext` with the file path, the versions before/after, and the names of migrations already applied during the load.
+
+```typescript
+const migrations: Migration<MyConfig>[] = [
+  {
+    name: "v1-features",
+    version: 1,
+    // No shouldRun needed: runs when config.version < 1.
+    run: (config) => ({ ...config, features: {} }),
+  },
+  {
+    name: "v2-rename-theme",
+    version: 2,
+    run: (config, _filePath, ctx) => {
+      // ctx.appliedMigrations: ["v1-features"], ctx.fromVersion: 1, ctx.toVersion: 2
+      const { theme, ...rest } = config as MyConfig & { theme?: string };
+      return { ...rest, appearance: { theme } };
+    },
+  },
+];
+
+await configLoader.load();
+configLoader.getVersion(); // highest stamped version across scopes
+```
+
+Provide both `version` and `shouldRun` to gate on content while still stamping (e.g., `shouldRun: (c) => c.legacy !== undefined`). Migrations with neither throw at construction.
+
+#### JSON Schema support
+
+`ConfigLoader` can inject a `$schema` field into settings files, giving editors autocomplete and validation. Pair it with `buildSchemaUrl` and auto-generated schemas from `ts-json-schema-generator`.
+
+```typescript
+import { ConfigLoader, buildSchemaUrl } from "@aliou/pi-utils-settings";
+import pkg from "./package.json";
+
+const schemaUrl = buildSchemaUrl(pkg.name, pkg.version);
+
+// For schemas hosted outside npm/unpkg, use a custom template:
+const githubSchemaUrl = buildSchemaUrl("aliou/my-extension", "v1.0.0", {
+  template: "https://raw.githubusercontent.com/{packageName}/{version}/{schemaPath}",
+});
+
+const loader = new ConfigLoader<MyConfig, ResolvedConfig>(
+  "my-extension",
+  defaults,
+  { schemaUrl },
+);
+```
+
+When `schemaUrl` is set, `save()` writes `$schema` as the first key in the JSON file and `load()` strips it before returning config to callers.
+
+To generate the schema from your `TConfig` type, install `ts-json-schema-generator` as a devDependency and use the bundled `pi-settings-schema` CLI. It wraps the generator and injects the reserved `$schema` and `version` properties, so your config type doesn't need them:
+
+```json
+{
+  "gen:schema": "pi-settings-schema -p src/config.ts -t MyConfig -o schema.json --version 2",
+  "check:schema": "pi-settings-schema -p src/config.ts -t MyConfig -o schema.json --version 2 --check"
+}
+```
+
+Run `pnpm gen:schema` to produce `schema.json`, commit it, and add `"schema.json"` to `files` in `package.json` so it ships with your npm package. Add `check:schema` to CI to catch drift (exits 1 when the committed schema is stale). `--version` documents the current migration version in the schema. If the extension is not published to npm, commit `schema.json` somewhere public and pass a custom `template` or `baseUrl` to `buildSchemaUrl`.
+
+The same logic is available programmatically as `generateSettingsSchema(options)` and `finalizeSchema(schema, options)`.
+
+An optional `afterMerge` hook runs after the deep merge for logic that can't be expressed as a simple merge (e.g., one field replacing another):
+
+```typescript
+new ConfigLoader("my-ext", defaults, {
+  afterMerge: (resolved, global, local, memory) => {
+    if (local?.customField) {
+      resolved.derivedField = local.customField;
+    }
+    return resolved;
+  },
+});
+```
+
+### registerSettingsCommand
+
+Creates a `/name:settings` command with scope tabs (Global/Local/Memory), draft-based editing, and Ctrl+S to save.
+
+All changes (boolean toggles, enum cycling, submenu edits) are held in memory as drafts. Nothing is written to disk until the user presses Ctrl+S. Esc exits without saving by default. Dirty tabs show a `*` marker. Use `onBeforeClose` to intercept Esc, for example to confirm discarding unsaved drafts.
+
+Ctrl+S saves from any depth, including inside open submenus (`ArrayEditor`, `SettingsDetailEditor`, `FuzzySelector`, ...). Submenus commit edits to the draft on every mutation, so a nested save always persists the latest state. Standalone component users can pass `requestSave` in the component options to get the same behavior outside `registerSettingsCommand`.
+
+```typescript
+import { registerSettingsCommand, type SettingsSection } from "@aliou/pi-utils-settings";
+
+registerSettingsCommand<MyConfig, ResolvedConfig>(pi, {
+  commandName: "my-ext:settings",
+  title: "My Extension Settings",
+  configStore: configLoader, // implements ConfigStore interface
+  buildSections: (tabConfig, resolved, { setDraft, theme }) => [
+    {
+      label: "General",
+      items: [
+        {
+          id: "features.darkMode",
+          label: "Dark mode",
+          description: theme.fg("dim", "Enable dark mode"),
+          currentValue: (tabConfig?.features?.darkMode ?? resolved.features.darkMode) ? "on" : "off",
+          values: ["on", "off"],
+        },
+      ],
+    },
+  ],
+  // --- Optional: Custom change handler ---
+  // The default handler stores all values as raw strings ("on"/"off", "pnpm", etc).
+  // Use onSettingChange to convert display values to the correct storage types:
+  // - Booleans: newValue === "on" -> true
+  // - Numbers: Number.parseInt(newValue, 10)
+  // Return null to fall through to the default string storage.
+  onSettingChange: (id, newValue, config) => {
+    const updated = structuredClone(config);
+    if (id === "features.darkMode") {
+      updated.features = { ...updated.features, darkMode: newValue === "on" };
+      return updated;
+    }
+    return null; // Fall through for other fields
+  },
+  // Optional: return false to keep the settings UI open on Esc.
+  onBeforeClose: (isDirty) => !isDirty,
+});
+```
+
+You can also add non-scope top-level tabs with `extraTabs`:
+
+```typescript
+import { registerSettingsCommand, type ExtraSettingsTab } from "@aliou/pi-utils-settings";
+
+const extraTabs: ExtraSettingsTab<MyConfig, ResolvedConfig>[] = [
+  {
+    id: "examples",
+    label: "Examples",
+    buildSections: ({ resolved, getRawForScope, enabledScopes }) => {
+      const globalConfig = getRawForScope("global");
+      return [
+        {
+          label: "Examples",
+          items: [
+            {
+              id: "example.enabledScopes",
+              label: "Enabled scopes",
+              currentValue: enabledScopes.join(", "),
+            },
+            {
+              id: "example.darkModeDefault",
+              label: "Dark mode default",
+              currentValue: resolved.features.darkMode ? "on" : "off",
+            },
+            {
+              id: "example.globalPresent",
+              label: "Global config",
+              currentValue: globalConfig ? "present" : "missing",
+              description: "Read-only info tab not tied to a scope.",
+            },
+          ],
+        },
+      ];
+    },
+  },
+];
+```
+
+`Ctrl+S` behavior stays the same: only dirty scope drafts are saved. Extra tabs can update drafts by calling `setDraftForScope(...)` from submenu callbacks.
+
+For value-cycling items (`values`) in an extra tab, add `onSettingChange` to the extra tab and choose the target scope explicitly. `applySettingChangeToScope(...)` reuses the command-level `onSettingChange` handler, falling back to the default dotted-path string storage when that handler returns `null`.
+
+```typescript
+const extraTabs: ExtraSettingsTab<MyConfig, ResolvedConfig>[] = [
+  {
+    id: "presets",
+    label: "Presets",
+    buildSections: ({ getDraftForScope, getRawForScope }) => {
+      const config = getDraftForScope("global") ?? getRawForScope("global");
+      return [
+        {
+          label: "Presets",
+          items: [
+            {
+              id: "features.darkMode",
+              label: "Dark mode",
+              currentValue: config?.features?.darkMode ? "on" : "off",
+              values: ["on", "off"],
+            },
+          ],
+        },
+      ];
+    },
+    onSettingChange: (id, newValue, ctx) => {
+      ctx.applySettingChangeToScope("global", id, newValue);
+    },
+  },
+];
+```
+
+`buildSections` ctx now includes `theme`, which is both a `SettingsListTheme` and full pi `Theme`. This means you can use list helpers (`label`, `value`, `hint`, ...) and pass the same object to components that require full `Theme`.
+
+```typescript
+import { Wizard } from "@aliou/pi-utils-settings";
+
+buildSections: (_tabConfig, _resolved, ctx) => [
+  {
+    label: "Setup",
+    items: [
+      {
+        id: "setup.wizard",
+        label: "Run setup",
+        currentValue: ctx.theme.fg("accent", "open"),
+        submenu: (_value, done) =>
+          new Wizard({
+            title: "Setup",
+            theme: ctx.theme,
+            steps: [{ label: "Step", build: () => ({ render: () => [ctx.theme.hint("Ready")], handleInput: () => {} }) }],
+            onComplete: () => done("done"),
+            onCancel: () => done(undefined),
+          }),
+      },
+    ],
+  },
+];
+```
+
+### Submenu support
+
+Items can open submenus by providing a `submenu` factory. The factory receives the current value, a `done` callback, and a `{ requestRender, hideHint }` context so async submenus can trigger a redraw. Use `setDraft` inside submenu `onSave` to keep changes in the draft (same save model as simple values):
+
+```typescript
+import { ArrayEditor, setNestedValue } from "@aliou/pi-utils-settings";
+
+{
+  id: "tags",
+  label: "Tags",
+  currentValue: `${tags.length} items`,
+  submenu: (_val, done, submenuCtx) => {
+    let latest = [...tags];
+    return new ArrayEditor({
+      label: "Tags",
+      items: [...tags],
+      theme: ctx.theme,
+      // Forward the host's flag: the panel renders the single controls
+      // line, so the editor hides its own footer and exposes shortcuts
+      // through getShortcuts().
+      hideHint: submenuCtx.hideHint,
+      onSave: (items) => {
+        latest = items;
+        const updated = structuredClone(tabConfig ?? {}) as MyConfig;
+        setNestedValue(updated, "tags", items);
+        setDraft(updated);
+      },
+      onDone: () => done(`${latest.length} items`),
+    });
+  },
+}
+```
+
+For submenus that load data asynchronously, call `ctx.requestRender()` once the real editor is ready. The render hook is wired automatically by `registerSettingsCommand`; standalone `SectionedSettings` users can pass `requestRender` in `SectionedSettingsOptions`.
+
+```typescript
+import type { Component } from "@earendil-works/pi-tui";
+import { Key, matchesKey } from "@earendil-works/pi-tui";
+import { FuzzySelector } from "@aliou/pi-utils-settings";
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function loadPresets(): Promise<string[]> {
+  // Simulate a network or subprocess call.
+  await sleep(2000);
+  return ["dark", "light", "solarized-dark"];
+}
+
+{
+  id: "remote.presets",
+  label: "Remote presets",
+  currentValue: "loading",
+  submenu: (_val, done, { requestRender, hideHint }) => {
+    class AsyncPresetPicker implements Component {
+      private editor: FuzzySelector | null = null;
+
+      constructor() {
+        void loadPresets().then((presets) => {
+          this.editor = new FuzzySelector({
+            label: "Preset",
+            items: presets,
+            theme: ctx.theme,
+            hideHint,
+            onSelect: (selected) => {
+              const updated = structuredClone(tabConfig ?? {}) as MyConfig;
+              setNestedValue(updated, "appearance.theme", selected);
+              setDraft(updated);
+              done(selected);
+            },
+            onDone: () => done(undefined),
+          });
+          requestRender();
+        });
+      }
+
+      render(width: number): string[] {
+        return this.editor?.render(width) ?? [ctx.theme.hint("  (loading presets...)")];
+      }
+
+      // Forward shortcuts so the panel's controls line stays
+      // accurate once the editor is ready.
+      getShortcuts(): string | undefined {
+        return this.editor?.getShortcuts();
+      }
+
+      handleInput(data: string): void {
+        if (this.editor === null && matchesKey(data, Key.escape)) {
+          done(undefined);
+          return;
+        }
+        this.editor?.handleInput?.(data);
+      }
+
+      invalidate(): void {
+        this.editor?.invalidate?.();
+      }
+    }
+
+    return new AsyncPresetPicker();
+  },
+}
+```
+
+### SectionedSettings vs SettingsDetailEditor
+
+Use **SectionedSettings** alone when each row can be edited in one step (toggle, enum cycle, or a simple submenu).
+
+Use **SectionedSettings + SettingsDetailEditor** when a selected row needs a focused second-level panel with multiple editable fields.
+
+`SettingsDetailEditor` is data-driven. You pass field descriptors with getters/setters and optional nested submenu callbacks. The component owns keyboard navigation and rendering only.
+
+```typescript
+import {
+  ArrayEditor,
+  SettingsDetailEditor,
+  type SettingsDetailField,
+} from "@aliou/pi-utils-settings";
+import { getSettingsListTheme } from "@earendil-works/pi-coding-agent";
+
+const fields: SettingsDetailField[] = [
+  {
+    id: "autoSave",
+    type: "boolean",
+    label: "Auto save",
+    getValue: () => editor.autoSave,
+    setValue: (next) => {
+      editor.autoSave = next;
+    },
+  },
+  {
+    id: "tabSize",
+    type: "enum",
+    label: "Tab size",
+    getValue: () => String(editor.tabSize),
+    setValue: (next) => {
+      editor.tabSize = Number.parseInt(next, 10);
+    },
+    options: ["2", "4", "8"],
+  },
+  {
+    id: "favorites",
+    type: "submenu",
+    label: "Favorites",
+    getValue: () => `${favorites.length} items`,
+    submenu: (done) =>
+      new ArrayEditor({
+        label: "Favorites",
+        items: [...favorites],
+        theme: getSettingsListTheme(),
+        onSave: (items) => {
+          favorites = items;
+        },
+        onDone: () => done(`${favorites.length} items`),
+      }),
+  },
+  {
+    id: "clear",
+    type: "action",
+    label: "Clear favorites",
+    getValue: () => "destructive",
+    onConfirm: () => {
+      favorites = [];
+    },
+    confirmMessage: "Clear all favorites? This cannot be undone.",
+  },
+];
+
+const detail = new SettingsDetailEditor({
+  title: "Editor details",
+  fields,
+  theme: getSettingsListTheme(),
+  onDone: (summary) => done(summary),
+  getDoneSummary: () => `${favorites.length} items`,
+  // When hosted via registerSettingsCommand, forward the submenu context's
+  // hideHint so the editor's own footer is hidden and the panel shows the
+  // editor's shortcuts as its single controls line.
+  hideHint: submenuCtx.hideHint,
+});
+```
+
+### Unified shortcut line
+
+The settings panel renders exactly one shortcut line at a time, always below the separator. When a submenu is open and implements `getShortcuts(): string | undefined` (see `SettingsSubmenuComponent`), the panel's controls line shows the submenu's current shortcuts (e.g. `↑/↓ or j/k navigate · Enter edit/open · Esc back`, or `Enter: confirm · Esc: cancel` while a field editor is open) instead of the default `Enter/Space change · Ctrl+S save · Esc close`. Submenus without `getShortcuts()` fall back to the default controls line.
+
+All built-in submenu components — `SettingsDetailEditor`, `ArrayEditor`, `PathArrayEditor`, `FuzzySelector`, and `FuzzyMultiSelector` — implement `getShortcuts()` per internal mode and render unframed (a plain title line above the body, no border), so they sit cleanly inside the panel's own border. Each accepts a `hideHint` option that suppresses its own hint footer; for `FuzzyMultiSelector`, `hideHint` takes precedence over its existing `showHints` option (default `true`). `SectionedSettings` forwards its `hideHint` option through the submenu factory context, so components hosted by `registerSettingsCommand` only need `hideHint: ctx.hideHint` (as above) to keep a single shortcut line. Ctrl+S still saves from any depth even though the submenu's line may not mention it, and Esc semantics stay accurate: with a submenu open, Esc backs out of the submenu rather than closing the panel.
+
+Standalone component users should leave `hideHint` unset so the component keeps rendering its own hint footer.
+
+### ConfigStore interface
+
+`createConfigStore(loader, { scopes? })` adapts a `ConfigLoader` to the `ConfigStore` interface, optionally exposing only a subset of scopes to the settings UI:
+
+```typescript
+import { createConfigStore } from "@aliou/pi-utils-settings";
+
+registerSettingsCommand(pi, {
+  // ...
+  configStore: createConfigStore(configLoader, { scopes: ["global", "local"] }),
+});
+```
+
+Extensions with custom config loaders can implement `ConfigStore` directly instead of using `ConfigLoader`:
+
+```typescript
+interface ConfigStore<TConfig, TResolved> {
+  getConfig(): TResolved;
+  getRawConfig(scope: Scope): TConfig | null;
+  hasScope(scope: Scope): boolean;
+  hasConfig(scope: Scope): boolean;
+  getEnabledScopes(): Scope[];
+  save(scope: Scope, config: TConfig): Promise<void>;
+}
+```
+
+### Components
+
+- **SectionedSettings**: Grouped settings list with search filtering and cursor preservation on update.
+- **SettingsDetailEditor**: Focused second-level editor for one selected item (text, enum, boolean, nested submenu, destructive action).
+- **ArrayEditor**: String array editor with add/remove/reorder.
+- **PathArrayEditor**: Path-focused array editor with Tab completion in add/edit mode.
+- **FuzzySelector**: Fuzzy-searchable single-select list.
+- **FuzzyMultiSelector**: Fuzzy-searchable multi-select checklist with locked/recommended items and sub-options.
+- **Wizard**: Multi-step setup component with tabbed navigation, progress indicators, and bordered frame.
+
+### Helpers
+
+- `setNestedValue(obj, "a.b.c", value)`: Set a deeply nested value by dot-separated path.
+- `getNestedValue(obj, "a.b.c")`: Get a deeply nested value by dot-separated path.
+- `getSettingsTheme(theme)`: Build a combined settings theme (`SettingsTheme`) usable by both settings-list components and full-theme components like `Wizard`.
+- `buildSchemaUrl(packageName, version, options?)`: Build a URL to a JSON Schema file for `$schema` injection (defaults to unpkg, supports custom `baseUrl` or `template`).
+- `pi-settings-schema` CLI: Generate a config JSON schema from a TS type, injecting `$schema`/`version` (`finalizeSchema`/`generateSettingsSchema` for programmatic use).
+
+## Exports
+
+```typescript
+export {
+  ArrayEditor,
+  type ArrayEditorOptions,
+} from "./src/components/array-editor";
+export {
+  FuzzyMultiSelector,
+  type FuzzyMultiSelectorItem,
+  type FuzzyMultiSelectorOptions,
+  type FuzzyMultiSelectorSubOption,
+} from "./src/components/fuzzy-multi-selector";
+export {
+  FuzzySelector,
+  type FuzzySelectorOptions,
+} from "./src/components/fuzzy-selector";
+export {
+  PathArrayEditor,
+  type PathArrayEditorOptions,
+} from "./src/components/path-array-editor";
+export {
+  SectionedSettings,
+  type SectionedSettingsOptions,
+  type SettingsSection,
+} from "./src/components/sectioned-settings";
+export {
+  type SettingsDetailActionField,
+  type SettingsDetailBooleanField,
+  SettingsDetailEditor,
+  type SettingsDetailEditorOptions,
+  type SettingsDetailEnumField,
+  type SettingsDetailField,
+  type SettingsDetailSubmenuField,
+  type SettingsDetailTextField,
+} from "./src/components/settings-detail-editor";
+export {
+  Wizard,
+  type WizardOptions,
+  type WizardStep,
+  type WizardStepContext,
+} from "./src/components/wizard";
+export {
+  ConfigLoader,
+  type ConfigStore,
+  createConfigStore,
+  type Migration,
+  type MigrationContext,
+  type Scope,
+} from "./src/config-loader";
+export { getNestedValue, setNestedValue } from "./src/helpers";
+export { type BuildSchemaUrlOptions, buildSchemaUrl } from "./src/schema";
+export {
+  finalizeSchema,
+  generateSettingsSchema,
+} from "./src/schema-gen.mjs";
+export {
+  type ExtraSettingsTab,
+  type ExtraSettingsTabChangeContext,
+  type ExtraSettingsTabContext,
+  registerSettingsCommand,
+  type SettingsCommandOptions,
+} from "./src/settings-command";
+export { getSettingsTheme, type SettingsTheme } from "./src/theme";
+```

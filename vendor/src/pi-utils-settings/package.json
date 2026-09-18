@@ -1,0 +1,71 @@
+{
+  "name": "@aliou/pi-utils-settings",
+  "version": "0.21.0",
+  "type": "module",
+  "private": false,
+  "license": "MIT",
+  "description": "Shared settings UI and config loader for pi extensions",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "pi-settings-schema": "bin/pi-settings-schema.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aliou/pi-utils-settings"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "bin",
+    "src",
+    "skills",
+    "README.md",
+    "!src/**/*.test.ts"
+  ],
+  "pi": {
+    "skills": [
+      "skills"
+    ]
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "changeset": "changeset",
+    "version": "changeset version",
+    "release": "pnpm changeset publish"
+  },
+  "dependencies": {
+    "@aliou/pi-utils-ui": "^0.5.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=0.74.0 <1",
+    "ts-json-schema-generator": ">=2.4.0 <3"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    },
+    "ts-json-schema-generator": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@aliou/pi-utils-ui": "^0.5.0",
+    "@aliou/biome-plugins": "^0.8.1",
+    "@biomejs/biome": "^2.4.15",
+    "@changesets/cli": "^2.27.11",
+    "@earendil-works/pi-coding-agent": "0.74.0",
+    "@earendil-works/pi-tui": "0.74.0",
+    "@types/node": "^25.0.10",
+    "ts-json-schema-generator": "^2.4.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  },
+  "packageManager": "pnpm@10.26.1"
+}

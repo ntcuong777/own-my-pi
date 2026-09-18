@@ -1,0 +1,34 @@
+{
+  "name": "pi-antiloop",
+  "version": "1.6.1",
+  "description": "Antiloop: detect reasoning loops and force a break (warn → force → abort) across text, tool, thinking, structural, degenerate-repetition, and no-progress outcome patterns. Degenerate (one message stuck repeating a word hundreds of times — noguerol ×5145) is caught at message_end and its bash blocked before executing. No-progress (the NFS test-A…QQQ class: ~90 mutated re-runs of the same experiment, every one failing identically) fires when the same failing outcome repeats ≥ outcomeMinRepeats times with near-identical args. Fixes antiloop going blind mid-session: tracked messages use a monotonic sequence so the trim of the sliding window can never collide turn indices. The force break is delivered mid-run (steer before the next LLM call) and if the model ignores it antiloop aborts the run — an autonomous tool loop always terminates. Result-aware tool-loop detection keeps sequential bash and converging sweeps quiet; task-stream recognition keeps punched/plan batch work quiet.",
+  "keywords": [
+    "pi-package",
+    "antiloop",
+    "loop-detection",
+    "reasoning",
+    "monitoring"
+  ],
+  "author": "Javier Noguerol <https://github.com/noguerol>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/noguerol/antiloop"
+  },
+  "homepage": "https://github.com/noguerol/antiloop",
+  "bugs": {
+    "url": "https://github.com/noguerol/antiloop/issues"
+  },
+  "pi": {
+    "extensions": [
+      "./src/index.ts"
+    ],
+    "image": "https://raw.githubusercontent.com/noguerol/antiloop/main/docs/preview.jpeg"
+  },
+  "files": [
+    "src"
+  ],
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  }
+}

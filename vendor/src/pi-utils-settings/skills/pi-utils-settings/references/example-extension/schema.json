@@ -1,0 +1,103 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$ref": "#/definitions/ExampleConfig",
+  "definitions": {
+    "ExampleConfig": {
+      "type": "object",
+      "properties": {
+        "appearance": {
+          "type": "object",
+          "properties": {
+            "theme": {
+              "type": "string",
+              "description": "Color theme name (e.g. \"dark\", \"light\", \"solarized\")."
+            },
+            "fontSize": {
+              "type": "number",
+              "description": "Editor font size in pixels."
+            },
+            "showLineNumbers": {
+              "type": "boolean",
+              "description": "Show line numbers in the gutter."
+            }
+          },
+          "additionalProperties": false,
+          "description": "Visual appearance settings."
+        },
+        "editor": {
+          "type": "object",
+          "properties": {
+            "autoSave": {
+              "type": "boolean",
+              "description": "Automatically save files after changes."
+            },
+            "formatOnSave": {
+              "type": "boolean",
+              "description": "Run formatter on save."
+            },
+            "tabSize": {
+              "type": "number",
+              "description": "Number of spaces per tab."
+            }
+          },
+          "additionalProperties": false,
+          "description": "Editor behavior settings."
+        },
+        "favorites": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "List of favorite file paths."
+        },
+        "ignorePaths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Glob patterns for paths to ignore."
+        },
+        "profiles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Profile display name."
+              },
+              "theme": {
+                "type": "string",
+                "description": "Theme override for this profile."
+              },
+              "enabled": {
+                "type": "boolean",
+                "description": "Whether this profile is active."
+              }
+            },
+            "additionalProperties": false
+          },
+          "description": "Named configuration profiles."
+        },
+        "$schema": {
+          "type": "string"
+        },
+        "version": {
+          "anyOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "string",
+              "pattern": "^\\d{1,15}(\\.\\d{1,15})?(\\.\\d{1,15})?$"
+            }
+          ],
+          "description": "Config schema version, stamped by migrations."
+        }
+      },
+      "additionalProperties": false,
+      "description": "User-facing configuration for the example extension."
+    }
+  }
+}
