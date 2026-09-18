@@ -1,0 +1,14 @@
+{
+  "npm": [
+    "@juicesharp/rpiv-web-tools",
+    "@juicesharp/rpiv-ask-user-question",
+    "@juicesharp/rpiv-todo",
+    "pi-mcp-adapter",
+    "pi-hashline-edit",
+    "pi-smart-compact",
+    "pi-lens",
+    "pi-ast-grep",
+    "pi-antiloop",
+    "@narumitw/pi-plan-mode"
+  ]
+}

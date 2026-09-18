@@ -1,0 +1,19 @@
+{
+  "defaultProvider": "cursor",
+  "defaultModel": "cursor-grok-4.6",
+  "defaultThinkingLevel": "high",
+  "packages": [
+    "npm:@juicesharp/rpiv-web-tools",
+    "npm:@juicesharp/rpiv-ask-user-question",
+    "npm:@juicesharp/rpiv-todo",
+    "npm:pi-mcp-adapter",
+    "npm:pi-hashline-edit",
+    "npm:pi-smart-compact",
+    "npm:pi-lens",
+    "npm:pi-ast-grep",
+    "npm:pi-antiloop",
+    "npm:@narumitw/pi-plan-mode"
+  ],
+  "theme": "dark",
+  "compaction": { "enabled": true }
+}

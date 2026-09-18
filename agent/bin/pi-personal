@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export PI_PERSONAL=1
+exec pi "$@"

@@ -1,0 +1,8 @@
+{
+  "default": "neuralwatt/glm-5.3-flash:high",
+  "plan": "neuralwatt/glm-5.3:high",
+  "advisor": "openai-codex/gpt-5.6-sol:medium",
+  "task": "openai-codex/gpt-5.6-luna:medium",
+  "reviewer": "openai-codex/gpt-5.5",
+  "tiny": "openai-codex/gpt-5.6-luna:low"
+}
