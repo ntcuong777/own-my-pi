@@ -20,7 +20,5 @@ preferences and lessons, earendil-works/pi-review for `/review` /
 dbachelder/pi-btw for `/btw` parallel side conversations,
 fitchmultz/pi-cursor-sdk for Cursor SDK models inside Pi (git snapshot plus
 the published `dist/` overlay, because upstream gitignores the compile
-output Pi actually loads), and
-kakyudev/pi-opencode-bridge for OpenCode Go/Zen providers. Default Anthropic
-consolidation model is a no-op on this stack; host settings.json sets
-memory.consolidationModel.
+output Pi actually loads). Default Anthropic consolidation model is a
+no-op on this stack; host settings.json sets memory.consolidationModel.

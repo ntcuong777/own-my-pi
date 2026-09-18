@@ -16,8 +16,7 @@
     "./vendor/node_modules/@samfp/pi-memory",
     "./vendor/node_modules/@earendil-works/pi-review",
     "./vendor/node_modules/pi-btw",
-    "./vendor/node_modules/pi-cursor-sdk",
-    "./vendor/node_modules/pi-opencode-bridge"
+    "./vendor/node_modules/pi-cursor-sdk"
   ],
   "notes": "Local paths are relative to ~/.pi/agent/settings.json. Sources live in vendor/."
 }

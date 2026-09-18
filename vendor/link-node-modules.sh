@@ -86,7 +86,6 @@ link_pkg "pi-cursor-sdk" "src/pi-cursor-sdk"
 link_pkg "pi-hashline-edit" "src/pi-hashline-edit"
 link_pkg "pi-lens" "src/pi-lens"
 link_pkg "pi-mcp-adapter" "src/pi-mcp-adapter"
-link_pkg "pi-opencode-bridge" "src/pi-opencode-bridge"
 link_pkg "pi-smart-compact" "src/pi-smart-compact"
 link_pkg "pi-subagents" "src/pi-subagents"
 

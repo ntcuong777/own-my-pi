@@ -50,7 +50,6 @@ Plugin source lives in vendor/src/, not tarballs. Git snapshots:
 - vendor/src/pi-review (earendil-works/pi-review, @earendil-works/pi-review)
 - vendor/src/pi-btw (dbachelder/pi-btw)
 - vendor/src/pi-cursor-sdk (fitchmultz/pi-cursor-sdk)
-- vendor/src/pi-opencode-bridge (kakyudev/pi-opencode-bridge)
 
 vendor/src/pi-hashline-edit is a local fork of RimuruW 0.8.3, not a clean
 snapshot. It carries guards ported from YuGiMob/pi-hashline-edit-pro while
