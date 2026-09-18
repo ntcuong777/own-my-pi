@@ -57,7 +57,8 @@ skills/                Pi-only skills (optional)
 nix-darwin flake input:
 
 ```nix
-pi-harness.url = "path:./fork/pi-harness";
+pi-harness.url = "git+ssh://git@github.com/ntcuong777/pi-harness.git";
+# then: nix flake lock --update-input pi-harness
 ```
 
 Home Manager:
