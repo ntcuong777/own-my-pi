@@ -41,6 +41,8 @@ import {
 } from "./noop-loop-guard";
 import { getReadSnapshot, getReadSnapshotVersions, rememberReadSnapshot } from "./read-snapshot";
 import { threeWayMerge } from "./merge";
+import { assertSpansFresh } from "./span-freshness";
+import { rememberUndo } from "./undo";
 import {
 	buildAppliedChangedResultText,
 	createRenderedEditMarkdownTheme,
@@ -115,6 +117,22 @@ const hashlinePrependEditSchema = Type.Object(
 	{ additionalProperties: false },
 );
 
+const hashlineInsertEditSchema = Type.Object(
+	{
+		op: literalStringSchema("insert", {
+			description: "insert lines before or after an anchor",
+		}),
+		pos: Type.String({ description: "anchor (LINE#HASH from read)" }),
+		direction: Type.Unsafe<"before" | "after">({
+			type: "string",
+			enum: ["before", "after"],
+			description: '"before" maps to prepend, "after" maps to append',
+		}),
+		lines: hashlineEditLinesSchema,
+	},
+	{ additionalProperties: false },
+);
+
 const hashlineReplaceTextEditSchema = Type.Object(
 	{
 		op: literalStringSchema("replace_text", {
@@ -134,6 +152,7 @@ const hashlineEditItemSchema = Type.Union(
 		hashlineReplaceEditSchema,
 		hashlineAppendEditSchema,
 		hashlinePrependEditSchema,
+		hashlineInsertEditSchema,
 		hashlineReplaceTextEditSchema,
 	],
 	{
@@ -148,6 +167,7 @@ const hashlineEditItemSchemaNoReplaceText = Type.Union(
 		hashlineReplaceEditSchema,
 		hashlineAppendEditSchema,
 		hashlinePrependEditSchema,
+		hashlineInsertEditSchema,
 	],
 	{
 		description:
@@ -314,9 +334,17 @@ async function executeEditPipeline(
 		: undefined;
 	const originalNormalized = normalizeToLF(rawContent);
 
-	const resolved = resolveEditAnchors(toolEdits);
-
 	const extraWarnings: string[] = [];
+	const resolved = resolveEditAnchors(toolEdits, extraWarnings);
+
+	// Endpoint hashes do not cover a long span's interior. Compare the whole
+	// replaced range against the last bytes hashline read for this file.
+	assertSpansFresh({
+		path,
+		edits: resolved,
+		liveContent: originalNormalized,
+		snapshotContent: absolutePath ? (getReadSnapshot(absolutePath) ?? undefined) : undefined,
+	});
 
 	// Both the direct-apply and snapshot-recovery paths return the same shape,
 	// differing only in the applied content, its per-result warnings, and the
@@ -726,6 +754,12 @@ function buildEditToolDefinition(): EditToolDefinition {
 				);
 			}
 
+			// Capture the exact pre-edit bytes for undo_last_change before the
+			// write lands. In-memory and one-shot; see src/undo.ts.
+			rememberUndo(
+				mutationTargetPath,
+				bom + restoreLineEndings(originalNormalized, originalEnding),
+			);
 			throwIfAborted(signal);
 			await writeFileAtomically(
 				mutationTargetPath,

@@ -49,5 +49,15 @@ Plugin source lives in vendor/src/, not tarballs. Git snapshots:
 - vendor/src/pi-review (earendil-works/pi-review, @earendil-works/pi-review)
 - vendor/src/pi-btw (dbachelder/pi-btw)
 
+vendor/src/pi-hashline-edit is a local fork of RimuruW 0.8.3, not a clean
+snapshot. It carries guards ported from YuGiMob/pi-hashline-edit-pro while
+keeping derived LINE#HASH anchors and the tool name `edit`: payload prefix
+stripping, boundary dedup, whole-span freshness, a write echo guard,
+auto-read after write, in-memory undo, an `insert` op, and
+`/hashline-config`. Settings live in the tracked agent/shared/hashline.json
+(anchor-only edits: replaceText is false). Re-syncing upstream means
+re-applying these; see docs/superpowers/plans/2026-09-18-hashline-pro-steal.md
+in the nix-darwin parent repo.
+
 Custom spawn must enforce cwd; it must not create git worktrees. Plan
 delegation uses pi-subagents, not a custom spawn hub.

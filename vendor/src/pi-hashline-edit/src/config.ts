@@ -1,23 +1,41 @@
 /**
  * Hashline configuration — loads ~/.pi/agent/hashline.json once at module init.
  *
- * Schema: { "hashLength": 2 | 3 | 4, "grep": boolean, "replaceText": boolean }
- * Defaults: hashLength=2, grep=false, replaceText=true.
+ * Schema: { "hashLength": 2 | 3 | 4, "grep": boolean, "replaceText": boolean, "boundaryDedup": "off" | "warn" | "on" | "strict" }
+ * Defaults: hashLength=2, grep=false, replaceText=true, boundaryDedup="warn".
  * Any field that fails validation falls back to its default; loading errors
  * are collected as warnings, never thrown.
  */
 
 import { readFileSync } from "node:fs";
+import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 // ─── Types ───────────────────────────────────────────────────────────────
 
+export type BoundaryDedupMode = "off" | "warn" | "on" | "strict";
+
 export type HashlineConfig = {
 	hashLength: 2 | 3 | 4;
 	grep: boolean;
 	replaceText: boolean;
+	boundaryDedup: BoundaryDedupMode;
 };
+
+const BOUNDARY_DEDUP_MODES: readonly BoundaryDedupMode[] = [
+	"off",
+	"warn",
+	"on",
+	"strict",
+];
+
+function isBoundaryDedupMode(value: unknown): value is BoundaryDedupMode {
+	return (
+		typeof value === "string" &&
+		(BOUNDARY_DEDUP_MODES as readonly string[]).includes(value)
+	);
+}
 
 /**
  * Supported hash length range. Single source of truth for every site that
@@ -44,12 +62,13 @@ export function parseHashlineConfig(raw: unknown): {
 	let hashLength: 2 | 3 | 4 = 2;
 	let grep = false;
 	let replaceText = true;
+	let boundaryDedup: BoundaryDedupMode = "warn";
 
 	if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
 		warnings.push(
 			`hashline.json: expected an object at top level, got ${JSON.stringify(raw)}. Using defaults.`,
 		);
-		return { config: { hashLength, grep, replaceText }, warnings };
+		return { config: { hashLength, grep, replaceText, boundaryDedup }, warnings };
 	}
 
 	const obj = raw as Record<string, unknown>;
@@ -90,7 +109,19 @@ export function parseHashlineConfig(raw: unknown): {
 		}
 	}
 
-	return { config: { hashLength, grep, replaceText }, warnings };
+	// Validate boundaryDedup
+	if ("boundaryDedup" in obj) {
+		const bd = obj.boundaryDedup;
+		if (isBoundaryDedupMode(bd)) {
+			boundaryDedup = bd;
+		} else {
+			warnings.push(
+				`hashline.json: "boundaryDedup" must be one of ${BOUNDARY_DEDUP_MODES.join(", ")}; got ${JSON.stringify(bd)}. Using default (warn).`,
+			);
+		}
+	}
+
+	return { config: { hashLength, grep, replaceText, boundaryDedup }, warnings };
 }
 
 // ─── Module-level singleton ──────────────────────────────────────────────
@@ -98,10 +129,16 @@ export function parseHashlineConfig(raw: unknown): {
 let _hashLength: 2 | 3 | 4 = 2;
 let _grep = false;
 let _replaceText = true;
+let _boundaryDedup: BoundaryDedupMode = "warn";
 let _warnings: string[] = [];
 
+export function hashlineConfigPath(): string {
+	return join(getAgentDir(), "hashline.json");
+}
+
 function loadConfig(): void {
-	const configPath = join(getAgentDir(), "hashline.json");
+	_warnings = [];
+	const configPath = hashlineConfigPath();
 	let raw: unknown;
 	try {
 		const text = readFileSync(configPath, "utf8");
@@ -123,6 +160,7 @@ function loadConfig(): void {
 	_hashLength = config.hashLength;
 	_grep = config.grep;
 	_replaceText = config.replaceText;
+	_boundaryDedup = config.boundaryDedup;
 	_warnings = warnings;
 }
 
@@ -141,6 +179,34 @@ export function getGrepEnabled(): boolean {
 
 export function getReplaceTextEnabled(): boolean {
 	return _replaceText;
+}
+
+export function getBoundaryDedupMode(): BoundaryDedupMode {
+	return _boundaryDedup;
+}
+
+/** Re-read hashline.json. Used by /hashline-config after a write. */
+export function reloadConfig(): void {
+	loadConfig();
+}
+
+export function currentHashlineConfig(): HashlineConfig {
+	return {
+		hashLength: _hashLength,
+		grep: _grep,
+		replaceText: _replaceText,
+		boundaryDedup: _boundaryDedup,
+	};
+}
+
+/** Persist config to hashline.json, then reload the singleton. */
+export async function writeHashlineConfig(next: HashlineConfig): Promise<void> {
+	await writeFile(
+		hashlineConfigPath(),
+		`${JSON.stringify(next, null, 2)}\n`,
+		"utf8",
+	);
+	reloadConfig();
 }
 
 export function getConfigWarnings(): string[] {
@@ -175,9 +241,15 @@ export function __setReplaceTextEnabledForTests(v: boolean): void {
 }
 
 /** @internal */
+export function __setBoundaryDedupForTests(v: BoundaryDedupMode): void {
+	_boundaryDedup = v;
+}
+
+/** @internal */
 export function __resetConfigForTests(): void {
 	_hashLength = 2;
 	_grep = false;
 	_replaceText = true;
+	_boundaryDedup = "warn";
 	_warnings = [];
 }

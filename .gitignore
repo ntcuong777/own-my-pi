@@ -9,3 +9,4 @@ vendor/node_modules/
 
 # Agent git worktrees (linked checkouts, not source)
 .worktrees/
+.superpowers/

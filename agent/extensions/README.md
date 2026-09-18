@@ -14,7 +14,10 @@ Tracked:
   pi-plan-mode has Stay/Implement/Export, not OMP's Refine overlay.
 - `redact-secrets.ts` — scrub secrets from tool results and the LLM context
   copy via [redactum](https://github.com/alexwhin/redactum) (API_KEY, AWS_KEY,
-  PRIVATE_KEY, DATABASE_CREDENTIALS, DEV_SECRET). Not a sandbox.
+  PRIVATE_KEY, DATABASE_CREDENTIALS, DEV_SECRET). Placeholders are unique per
+  finding (`<redacted:ak1>`), and an `edit`/`write` payload carrying one is
+  restored to the real bytes before the tool runs — or blocked with
+  `[E_REDACT_PLACEHOLDER]` when the token is unknown. Not a sandbox.
 
 Coming: model-roles, spawn cwd lock, cwd-scope, web-permission.
 

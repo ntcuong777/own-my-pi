@@ -22,6 +22,11 @@ LLMs edit code by quoting the text they see on screen. But by the time the edit 
 - 🛡️ **Stale Anchor Recovery** — 3-way snapshot merge attempts automatic recovery; on failure, returns fresh anchors for immediate retry
 - 🚫 **Strict by Design** — no silent relocation, no fuzzy matching, no accidental overwrites
 - ⚡ **Atomic Writes** — temp-file + rename, symlink and hardlink safe
+- 🧹 **Payload repair** — pasted `LINE#HASH:` prefixes are stripped once with a warning; nested rendered rows still fail closed
+- 🔒 **Whole-span freshness** — a range replace verifies every line in the range, not just its endpoints (`[E_STALE_SPAN]`)
+- 🚧 **Write echo guard** — refuses a `write` whose content is copied `read` output (`[E_WRITE_HASH_ECHO]`)
+- ↩️ **One-shot undo** — `undo_last_change`, in memory only (no on-disk copy of file contents)
+- ⚙️ **`/hashline-config`** — change settings without hand-editing JSON
 
 ## Quick Start
 
@@ -104,6 +109,7 @@ Optional. Create `~/.pi/agent/hashline.json`:
 | `hashLength` | `2` | 2–4 | Characters per line hash. Longer hashes reduce false-accept risk at the cost of extra tokens per line. |
 | `grep` | `false` | boolean | Register the `grep` tool (also requires ripgrep on `PATH`). |
 | `replaceText` | `true` | boolean | Allow the `replace_text` op. Set `false` to enforce anchor-only edits. |
+| `boundaryDedup` | `"warn"` | `off` / `warn` / `on` / `strict` | What to do when a replacement re-includes a surviving neighbor line: nothing, warn only (upstream behavior), strip it, or reject with `[E_BOUNDARY_DUP]`. |
 
 The file is read once at session start. A missing file means defaults. Invalid values fall back to defaults with a one-time warning.
 

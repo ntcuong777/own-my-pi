@@ -25,6 +25,7 @@ export type HashlineToolEdit = {
 	op: string;
 	pos?: string;
 	end?: string;
+	direction?: string;
 	lines?: string[];
 	oldText?: string;
 	newText?: string;
@@ -193,10 +194,42 @@ function assertNoDisplayPrefixes(lines: string[]): void {
 			DIFF_MINUS_RE.test(line)
 		) {
 			throw new Error(
-				`[E_INVALID_PATCH] "lines" must contain literal file content, not rendered "LINE#HASH:" or diff "+/-" prefixes. Offending line: ${JSON.stringify(line)}`,
+				`[E_INVALID_PATCH] "lines" still contains a rendered "LINE#HASH:" or diff prefix after one strip pass — this looks like nested read/diff output, not file content. Offending line: ${JSON.stringify(line)}`,
 			);
 		}
 	}
+}
+
+/**
+ * Remove ONE leading display prefix from a line: `12#MQ:`, `+12#MQ:`, `#MQ:`,
+ * or a diff-minus gutter. Returns the line unchanged when nothing matched.
+ *
+ * Pro strips these slips and warns instead of rejecting the call, because a
+ * model pasting a read row into `lines` is a copy slip, not a semantic error.
+ * Only one pass runs: a line that still looks like a display row after
+ * stripping is nested rendered output, which is rejected by
+ * assertNoDisplayPrefixes below.
+ */
+export function stripDisplayPrefix(line: string): string {
+	for (const re of [DISPLAY_PREFIX_PLUS_RE, DISPLAY_PREFIX_RE, DIFF_MINUS_RE]) {
+		const match = re.exec(line);
+		if (match) return line.slice(match[0].length);
+	}
+	return line;
+}
+
+export function stripDisplayPrefixes(lines: string[]): {
+	lines: string[];
+	stripped: number;
+} {
+	let stripped = 0;
+	const out = lines.map((line) => {
+		if (!line.length) return line;
+		const next = stripDisplayPrefix(line);
+		if (next !== line) stripped += 1;
+		return next;
+	});
+	return { lines: out, stripped };
 }
 
 /**
@@ -207,8 +240,12 @@ function assertNoDisplayPrefixes(lines: string[]): void {
  * rejected by `assertNoDisplayPrefixes` — the model must send literal file
  * content, never rendered read or diff output.
  */
-function hashlineParseText(edit: string[] | undefined): string[] {
-	const lines = edit ?? [];
+function hashlineParseText(
+	edit: string[] | undefined,
+	stripCount: { n: number },
+): string[] {
+	const { lines, stripped } = stripDisplayPrefixes(edit ?? []);
+	stripCount.n += stripped;
 	assertNoDisplayPrefixes(lines);
 	return lines;
 }
@@ -233,7 +270,7 @@ function hashlineParseText(edit: string[] | undefined): string[] {
  * - no anchors → file-level append/prepend (only for those ops)
  */
 
-const ITEM_KEYS = new Set(["op", "pos", "end", "lines", "oldText", "newText"]);
+const ITEM_KEYS = new Set(["op", "pos", "end", "direction", "lines", "oldText", "newText"]);
 
 function isStringArray(value: unknown): value is string[] {
 	return (
@@ -256,10 +293,11 @@ function assertEditItem(edit: Record<string, unknown>, index: number): void {
 		edit.op !== "replace" &&
 		edit.op !== "append" &&
 		edit.op !== "prepend" &&
-		edit.op !== "replace_text"
+		edit.op !== "replace_text" &&
+		edit.op !== "insert"
 	) {
 		throw new Error(
-			`[E_BAD_OP] Edit ${index} uses unknown op "${edit.op}". Expected "replace", "append", "prepend", or "replace_text".`,
+			`[E_BAD_OP] Edit ${index} uses unknown op "${edit.op}". Expected "replace", "append", "prepend", "insert", or "replace_text".`,
 		);
 	}
 
@@ -271,6 +309,16 @@ function assertEditItem(edit: Record<string, unknown>, index: number): void {
 	if ("end" in edit && typeof edit.end !== "string") {
 		throw new Error(
 			`Edit ${index} field "end" must be a string when provided.`,
+		);
+	}
+	if ("direction" in edit && typeof edit.direction !== "string") {
+		throw new Error(
+			`Edit ${index} field "direction" must be a string when provided.`,
+		);
+	}
+	if (edit.op !== "insert" && "direction" in edit) {
+		throw new Error(
+			`[E_BAD_OP] Edit ${index} with op "${edit.op}" does not support "direction". Use op "insert" with direction "before" or "after".`,
 		);
 	}
 	if ("oldText" in edit && typeof edit.oldText !== "string") {
@@ -322,10 +370,32 @@ function assertEditItem(edit: Record<string, unknown>, index: number): void {
 			`[E_BAD_OP] Edit ${index} with op "${edit.op}" does not support "end". Use "pos" or omit it for file boundary insertion.`,
 		);
 	}
+
+	if (edit.op === "insert") {
+		if (typeof edit.pos !== "string") {
+			throw new Error(
+				`[E_BAD_OP] Edit ${index} with op "insert" requires a "pos" anchor string.`,
+			);
+		}
+		if (edit.direction !== "before" && edit.direction !== "after") {
+			throw new Error(
+				`[E_BAD_OP] Edit ${index} with op "insert" requires "direction" to be "before" or "after".`,
+			);
+		}
+		if ("end" in edit) {
+			throw new Error(
+				`[E_BAD_OP] Edit ${index} with op "insert" does not support "end".`,
+			);
+		}
+	}
 }
 
-export function resolveEditAnchors(edits: HashlineToolEdit[]): HashlineEdit[] {
+export function resolveEditAnchors(
+	edits: HashlineToolEdit[],
+	warnings?: string[],
+): HashlineEdit[] {
 	const result: HashlineEdit[] = [];
+	const stripCount = { n: 0 };
 	for (const [index, edit] of edits.entries()) {
 		assertEditItem(edit as Record<string, unknown>, index);
 
@@ -336,7 +406,7 @@ export function resolveEditAnchors(edits: HashlineToolEdit[]): HashlineEdit[] {
 					op: "replace",
 					pos: parseAnchorRef(edit.pos!),
 					...(edit.end ? { end: parseAnchorRef(edit.end) } : {}),
-					lines: hashlineParseText(edit.lines),
+					lines: hashlineParseText(edit.lines, stripCount),
 				});
 				break;
 			}
@@ -344,7 +414,7 @@ export function resolveEditAnchors(edits: HashlineToolEdit[]): HashlineEdit[] {
 				result.push({
 					op: "append",
 					...(edit.pos ? { pos: parseAnchorRef(edit.pos) } : {}),
-					lines: hashlineParseText(edit.lines),
+					lines: hashlineParseText(edit.lines, stripCount),
 				});
 				break;
 			}
@@ -352,7 +422,7 @@ export function resolveEditAnchors(edits: HashlineToolEdit[]): HashlineEdit[] {
 				result.push({
 					op: "prepend",
 					...(edit.pos ? { pos: parseAnchorRef(edit.pos) } : {}),
-					lines: hashlineParseText(edit.lines),
+					lines: hashlineParseText(edit.lines, stripCount),
 				});
 				break;
 			}
@@ -364,7 +434,21 @@ export function resolveEditAnchors(edits: HashlineToolEdit[]): HashlineEdit[] {
 				});
 				break;
 			}
+			case "insert": {
+				// apply.ts never sees op:"insert" — desugar to prepend/append.
+				result.push({
+					op: edit.direction === "before" ? "prepend" : "append",
+					pos: parseAnchorRef(edit.pos!),
+					lines: hashlineParseText(edit.lines, stripCount),
+				});
+				break;
+			}
 		}
+	}
+	if (stripCount.n > 0 && warnings) {
+		warnings.push(
+			`Stripped a rendered display prefix from ${stripCount.n} replacement line(s). "lines" must be literal file content; the LINE#HASH prefix is context for you, not payload.`,
+		);
 	}
 	return result;
 }
