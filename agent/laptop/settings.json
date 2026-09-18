@@ -1,5 +1,5 @@
 {
-  "defaultProvider": "neuralwatt",
+  "defaultProvider": "z-ai",
   "defaultModel": "glm-5.3-flash",
   "defaultThinkingLevel": "high",
   "packages": [
@@ -23,7 +23,7 @@
     "enabled": true
   },
   "memory": {
-    "consolidationModel": "neuralwatt/glm-5.3-flash:high"
+    "consolidationModel": "z-ai/glm-5.3-flash:high"
   },
   "subagents": {
     "defaultModel": "openai-codex/gpt-5.6-luna:low",
