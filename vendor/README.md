@@ -16,7 +16,11 @@ directory to ~/.pi/agent/vendor. node_modules stays gitignored.
 Git snapshots include nicobailon/pi-subagents for plan delegation to cheap
 child agents, samfoy/pi-memory (@samfp/pi-memory) for cross-session
 preferences and lessons, earendil-works/pi-review for `/review` /
-`/end-review` including GitHub PRs via `gh pr checkout`, and
-dbachelder/pi-btw for `/btw` parallel side conversations. Default Anthropic
+`/end-review` including GitHub PRs via `gh pr checkout`,
+dbachelder/pi-btw for `/btw` parallel side conversations,
+fitchmultz/pi-cursor-sdk for Cursor SDK models inside Pi (git snapshot plus
+the published `dist/` overlay, because upstream gitignores the compile
+output Pi actually loads), and
+kakyudev/pi-opencode-bridge for OpenCode Go/Zen providers. Default Anthropic
 consolidation model is a no-op on this stack; host settings.json sets
 memory.consolidationModel.

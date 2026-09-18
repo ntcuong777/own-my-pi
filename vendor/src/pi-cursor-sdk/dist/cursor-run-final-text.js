@@ -1,0 +1,63 @@
+import { asRecord, hasUsableText } from "./cursor-record-utils.js";
+function isCursorTextBoundary(text, index) {
+    if (index <= 0 || index >= text.length)
+        return true;
+    const before = text[index - 1];
+    const after = text[index];
+    return !/[\p{L}\p{N}_]/u.test(before) || !/[\p{L}\p{N}_]/u.test(after);
+}
+function trimAlreadyEmittedCursorText(text, emittedText, options) {
+    if (!text || !emittedText)
+        return text;
+    if (text === emittedText)
+        return "";
+    if (text.startsWith(emittedText) && (options?.allowPartialPrefix || isCursorTextBoundary(text, emittedText.length))) {
+        return text.slice(emittedText.length);
+    }
+    if (emittedText.endsWith(text) && isCursorTextBoundary(emittedText, emittedText.length - text.length))
+        return "";
+    const trimmedText = text.trim();
+    const trimmedEmittedText = emittedText.trim();
+    if (trimmedText === trimmedEmittedText)
+        return "";
+    if (trimmedText && trimmedEmittedText.endsWith(trimmedText)) {
+        const suffixStart = trimmedEmittedText.length - trimmedText.length;
+        if (isCursorTextBoundary(trimmedEmittedText, suffixStart))
+            return "";
+    }
+    return text;
+}
+export function trimCurrentTurnAlreadyEmittedCursorText(text, currentTurnEmittedText, emittedText = currentTurnEmittedText) {
+    if (!currentTurnEmittedText)
+        return trimAlreadyEmittedCursorText(text, emittedText);
+    const currentTurnTrimmedText = trimAlreadyEmittedCursorText(text, currentTurnEmittedText, { allowPartialPrefix: true });
+    if (currentTurnTrimmedText !== text)
+        return currentTurnTrimmedText;
+    if (emittedText.endsWith(currentTurnEmittedText)) {
+        const emittedTextTrimmedText = trimAlreadyEmittedCursorText(text, emittedText, { allowPartialPrefix: true });
+        if (emittedTextTrimmedText !== text)
+            return emittedTextTrimmedText;
+    }
+    return trimAlreadyEmittedCursorText(text, emittedText);
+}
+export function getFinalAssistantText(message) {
+    for (let index = message.content.length - 1; index >= 0; index--) {
+        const block = asRecord(message.content[index]);
+        if (block?.type !== "text" || typeof block.text !== "string")
+            continue;
+        if (hasUsableText(block.text))
+            return block.text;
+    }
+    return "";
+}
+export function selectCursorFinalText(resultText, textDeltas, emittedText, fallbackText, options) {
+    const candidates = [typeof resultText === "string" ? resultText : undefined, fallbackText, textDeltas.join("")];
+    for (const candidate of candidates) {
+        if (!hasUsableText(candidate))
+            continue;
+        const trimmedCandidate = trimAlreadyEmittedCursorText(candidate, emittedText, options);
+        if (hasUsableText(trimmedCandidate))
+            return trimmedCandidate;
+    }
+    return "";
+}

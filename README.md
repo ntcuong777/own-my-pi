@@ -14,7 +14,7 @@ paths. No pi install npm at runtime.
 
 Git snapshots: aliou/pi-neuralwatt, fadilsflow/pi-codex-account,
 nicobailon/pi-subagents, samfoy/pi-memory, earendil-works/pi-review,
-dbachelder/pi-btw.
+dbachelder/pi-btw, fitchmultz/pi-cursor-sdk, kakyudev/pi-opencode-bridge.
 Extracted npm plugins: juicesharp rpiv-*, pi-mcp-adapter, pi-hashline-edit,
 pi-smart-compact, pi-lens, pi-ast-grep, pi-antiloop, narumitw/pi-plan-mode.
 
@@ -24,6 +24,10 @@ under subagents.defaultModel.
 GitHub PR review: pi-review (`/review pr 123` checks out via `gh`).
 
 Side conversation: pi-btw (`/btw` opens a parallel sub-session).
+
+Cursor models inside Pi: pi-cursor-sdk (`cursor/grok-4.6` via `/login` → Cursor).
+
+OpenCode Go/Zen models: pi-opencode-bridge (`/opencode-go-key`).
 
 Skills also load from ~/.claude/skills and ~/.codex/skills via the
 settings.json `skills` array. ~/.agents/skills is already a Pi global

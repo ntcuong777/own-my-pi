@@ -2,7 +2,9 @@
 
 Pi loads these from `$HOME/.pi/agent/skills`. Host `settings.json` also
 points at `$HOME/.claude/skills` and `$HOME/.codex/skills`. Pi already
-scans `$HOME/.agents/skills`. On a name collision, this tree wins.
+scans `$HOME/.agents/skills`. Shared names belong only here;
+leftover `$HOME/.agents/skills/<name>` copies are dropped on Home
+Manager activation.
 
 Frequent skills stay top-level. `skill-library` is the lazy catalog.
 

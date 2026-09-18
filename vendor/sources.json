@@ -92,5 +92,17 @@
     "url": "https://github.com/dbachelder/pi-btw",
     "rev": "1b599b2234d8c83002dfb2986bea021167712cfe",
     "version": "0.5.0"
+  },
+  "pi-cursor-sdk": {
+    "path": "src/pi-cursor-sdk",
+    "url": "https://github.com/fitchmultz/pi-cursor-sdk",
+    "rev": "772859a422277dbc12ccc9bbf340a0ccec3086c3",
+    "version": "0.3.7"
+  },
+  "pi-opencode-bridge": {
+    "path": "src/pi-opencode-bridge",
+    "url": "https://github.com/kakyudev/pi-opencode-bridge",
+    "rev": "8b1de3041b9d8bc5a25108ba1553ffdb210e8261",
+    "version": "0.2.1"
   }
 }

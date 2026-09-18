@@ -1,3 +1,5 @@
+import { createRequire } from "node:module";
+import { join } from "node:path";
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
 	containsPlaceholder,
@@ -109,4 +111,11 @@ describe("restorePlaceholders", () => {
 		const out = restorePlaceholders({ n: 1, ok: true, nil: null });
 		expect(out.value).toEqual({ n: 1, ok: true, nil: null });
 	});
+});
+
+test("redactum resolves from vendor/", () => {
+	const req = createRequire(join(import.meta.dir, "../vendor/package.json"));
+	const mod = req("redactum") as { redactum?: unknown } | ((...args: unknown[]) => unknown);
+	const fn = typeof mod === "function" ? mod : mod?.redactum;
+	expect(typeof fn).toBe("function");
 });

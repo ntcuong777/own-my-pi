@@ -18,7 +18,8 @@ This repository is the Pi daily-driver harness. It does not depend on any host N
 `skills/` is live-linked to ~/.pi/agent/skills. Pi also auto-loads
 ~/.agents/skills. Host settings.json adds ~/.claude/skills and
 ~/.codex/skills so Claude Code and Codex skills are available too.
-Name collisions keep the first skill found; this tree wins.
+Shared names belong only here; leftover ~/.agents/skills copies of
+those names are dropped on Home Manager activation.
 
 ## Live edit
 
@@ -48,6 +49,8 @@ Plugin source lives in vendor/src/, not tarballs. Git snapshots:
 - vendor/src/pi-memory (samfoy/pi-memory, @samfp/pi-memory)
 - vendor/src/pi-review (earendil-works/pi-review, @earendil-works/pi-review)
 - vendor/src/pi-btw (dbachelder/pi-btw)
+- vendor/src/pi-cursor-sdk (fitchmultz/pi-cursor-sdk)
+- vendor/src/pi-opencode-bridge (kakyudev/pi-opencode-bridge)
 
 vendor/src/pi-hashline-edit is a local fork of RimuruW 0.8.3, not a clean
 snapshot. It carries guards ported from YuGiMob/pi-hashline-edit-pro while

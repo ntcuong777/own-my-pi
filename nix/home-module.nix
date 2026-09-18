@@ -69,4 +69,23 @@ in
       --vendor ${lib.escapeShellArg "${harnessRoot}/vendor"} \
       --store ${lib.escapeShellArg "${plugins}"}
   '';
+
+  # Pi auto-loads ~/.agents/skills. Shared names belong in this harness.
+  # Home Manager often leaves dropped ~/.agents/skills/<name> symlinks in a
+  # pre-existing directory, which then show up as collisions.
+  home.activation.pruneAgentsSkillCollisions = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    agentsSkills=${lib.escapeShellArg "${homeDir}/.agents/skills"}
+    harnessSkills=${lib.escapeShellArg "${harnessRoot}/skills"}
+    if [ -d "$agentsSkills" ] && [ -d "$harnessSkills" ]; then
+      for skill in "$harnessSkills"/*; do
+        [ -d "$skill" ] || continue
+        name="$(basename "$skill")"
+        path="$agentsSkills/$name"
+        if [ -L "$path" ]; then
+          echo "[own-my-pi] dropping leftover ~/.agents/skills/$name (harness owns this name)" >&2
+          $DRY_RUN_CMD rm -f "$path"
+        fi
+      done
+    fi
+  '';
 }
