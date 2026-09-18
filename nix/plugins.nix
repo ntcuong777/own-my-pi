@@ -11,7 +11,7 @@ pkgs.buildNpmPackage {
       in
       base != "node_modules";
   };
-  npmDepsHash = "sha256-g0/l9do6q1mKPaX933LApRer7dbNc/ZKVMwl4GNywrg=";
+  npmDepsHash = "sha256-E+fdGrVyZLyBi0GO+SME3mxdH8kNQ7P5NbzwSih0u4E=";
   dontNpmBuild = true;
   npmFlags = [ "--legacy-peer-deps" ];
   makeCacheWritable = true;
@@ -39,6 +39,10 @@ pkgs.buildNpmPackage {
     ln -sfn ../src/pi-lens "$out/node_modules/pi-lens"
     ln -sfn ../src/pi-mcp-adapter "$out/node_modules/pi-mcp-adapter"
     ln -sfn ../src/pi-smart-compact "$out/node_modules/pi-smart-compact"
+    ln -sfn ../src/pi-subagents "$out/node_modules/pi-subagents"
+
+    mkdir -p "$out/src/pi-subagents/node_modules"
+    ln -sfn ../../../node_modules/undici-v8 "$out/src/pi-subagents/node_modules/undici"
 
     runHook postInstall
   '';

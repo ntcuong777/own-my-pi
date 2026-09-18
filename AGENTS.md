@@ -18,7 +18,8 @@ Do not use pi install npm: at runtime. Settings packages are local paths under .
 Plugin source lives in vendor/src/, not tarballs. Git snapshots:
 - vendor/src/pi-neuralwatt (aliou/pi-neuralwatt)
 - vendor/src/pi-codex-account (fadilsflow/pi-codex-account)
+- vendor/src/pi-subagents (nicobailon/pi-subagents)
 
 Third-party runtime deps are pinned in vendor/package-lock.json and installed by nix build .#plugins.
 
-Custom spawn must enforce cwd; it must not create git worktrees.
+Custom spawn must enforce cwd; it must not create git worktrees. Plan delegation uses pi-subagents, not a custom spawn hub.

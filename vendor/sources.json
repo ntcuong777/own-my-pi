@@ -9,19 +9,70 @@
     "url": "https://github.com/fadilsflow/pi-codex-account",
     "rev": "35b77b86374db1a4074655a8566e535c4f46e556"
   },
-  "@juicesharp/rpiv-web-tools": { "path": "src/rpiv-web-tools", "version": "2.10.1" },
-  "@juicesharp/rpiv-ask-user-question": { "path": "src/rpiv-ask-user-question", "version": "2.10.1" },
-  "@juicesharp/rpiv-todo": { "path": "src/rpiv-todo", "version": "2.10.1" },
-  "@juicesharp/rpiv-config": { "path": "src/rpiv-config", "version": "2.10.1" },
-  "@juicesharp/rpiv-i18n": { "path": "src/rpiv-i18n", "version": "2.10.1" },
-  "pi-mcp-adapter": { "path": "src/pi-mcp-adapter", "version": "2.34.0" },
-  "pi-hashline-edit": { "path": "src/pi-hashline-edit", "version": "0.8.3" },
-  "pi-smart-compact": { "path": "src/pi-smart-compact", "version": "9.7.0" },
-  "pi-lens": { "path": "src/pi-lens", "version": "4.2.1" },
-  "pi-ast-grep": { "path": "src/pi-ast-grep", "version": "0.1.0" },
-  "pi-antiloop": { "path": "src/pi-antiloop", "version": "1.6.1" },
-  "@narumitw/pi-plan-mode": { "path": "src/pi-plan-mode", "version": "0.58.0" },
-  "@narumitw/pi-tui-kit": { "path": "src/pi-tui-kit", "version": "0.59.0" },
-  "@aliou/pi-utils-settings": { "path": "src/pi-utils-settings", "version": "0.21.0" },
-  "@aliou/pi-utils-ui": { "path": "src/pi-utils-ui", "version": "0.5.0" }
+  "@juicesharp/rpiv-web-tools": {
+    "path": "src/rpiv-web-tools",
+    "version": "2.10.1"
+  },
+  "@juicesharp/rpiv-ask-user-question": {
+    "path": "src/rpiv-ask-user-question",
+    "version": "2.10.1"
+  },
+  "@juicesharp/rpiv-todo": {
+    "path": "src/rpiv-todo",
+    "version": "2.10.1"
+  },
+  "@juicesharp/rpiv-config": {
+    "path": "src/rpiv-config",
+    "version": "2.10.1"
+  },
+  "@juicesharp/rpiv-i18n": {
+    "path": "src/rpiv-i18n",
+    "version": "2.10.1"
+  },
+  "pi-mcp-adapter": {
+    "path": "src/pi-mcp-adapter",
+    "version": "2.34.0"
+  },
+  "pi-hashline-edit": {
+    "path": "src/pi-hashline-edit",
+    "version": "0.8.3"
+  },
+  "pi-smart-compact": {
+    "path": "src/pi-smart-compact",
+    "version": "9.7.0"
+  },
+  "pi-lens": {
+    "path": "src/pi-lens",
+    "version": "4.2.1"
+  },
+  "pi-ast-grep": {
+    "path": "src/pi-ast-grep",
+    "version": "0.1.0"
+  },
+  "pi-antiloop": {
+    "path": "src/pi-antiloop",
+    "version": "1.6.1"
+  },
+  "@narumitw/pi-plan-mode": {
+    "path": "src/pi-plan-mode",
+    "version": "0.58.0"
+  },
+  "@narumitw/pi-tui-kit": {
+    "path": "src/pi-tui-kit",
+    "version": "0.59.0"
+  },
+  "@aliou/pi-utils-settings": {
+    "path": "src/pi-utils-settings",
+    "version": "0.21.0"
+  },
+  "@aliou/pi-utils-ui": {
+    "path": "src/pi-utils-ui",
+    "version": "0.5.0"
+  },
+  "pi-subagents": {
+    "path": "src/pi-subagents",
+    "url": "https://github.com/nicobailon/pi-subagents",
+    "rev": "07bd09e0f93a19caee3c39e3cf4069c70ee8dbcd",
+    "version": "0.68.0"
+  }
 }

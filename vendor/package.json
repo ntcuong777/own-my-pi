@@ -27,10 +27,13 @@
     "undici": "^6.28.1",
     "vscode-jsonrpc": "^9.0.0",
     "xxhashjs": "^0.2.2",
-    "zod": "^3.25.0 || ^4.0.0"
+    "zod": "^3.25.0 || ^4.0.0",
+    "acorn": "8.18.0",
+    "yaml": "2.8.3",
+    "jiti": "2.7.0",
+    "undici-v8": "npm:undici@8.10.0"
   },
   "optionalDependencies": {
-    "jiti": "^2.7.0",
     "web-tree-sitter": "0.25.10"
   }
 }
