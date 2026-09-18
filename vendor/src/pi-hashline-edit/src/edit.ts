@@ -42,6 +42,7 @@ import {
 import { getReadSnapshot, getReadSnapshotVersions, rememberReadSnapshot } from "./read-snapshot";
 import { threeWayMerge } from "./merge";
 import { assertSpansFresh } from "./span-freshness";
+import { rememberUndo } from "./undo";
 import {
 	buildAppliedChangedResultText,
 	createRenderedEditMarkdownTheme,
@@ -735,6 +736,12 @@ function buildEditToolDefinition(): EditToolDefinition {
 				);
 			}
 
+			// Capture the exact pre-edit bytes for undo_last_change before the
+			// write lands. In-memory and one-shot; see src/undo.ts.
+			rememberUndo(
+				mutationTargetPath,
+				bom + restoreLineEndings(originalNormalized, originalEnding),
+			);
 			throwIfAborted(signal);
 			await writeFileAtomically(
 				mutationTargetPath,

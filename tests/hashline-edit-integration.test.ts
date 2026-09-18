@@ -68,3 +68,50 @@ test("E_STALE_SPAN fires when only the span interior drifted", async () => {
 	// nothing written
 	expect(readFileSync(file, "utf8")).toBe(drifted.join("\n") + "\n");
 });
+
+test("index.ts registers every tool, hook, and command without throwing", async () => {
+	const mod = await import("../vendor/src/pi-hashline-edit/index");
+	const tools: string[] = [];
+	const commands: string[] = [];
+	const events: string[] = [];
+	mod.default({
+		registerTool: (t: any) => tools.push(t.name),
+		registerCommand: (n: string) => commands.push(n),
+		on: (e: string) => events.push(e),
+	} as any);
+	// read/edit override the builtins; undo_last_change is new.
+	expect(tools).toContain("read");
+	expect(tools).toContain("edit");
+	expect(tools).toContain("undo_last_change");
+	expect(commands).toContain("hashline-config");
+	// write-hook needs both halves: the echo guard and the auto-read.
+	expect(events).toContain("tool_call");
+	expect(events).toContain("tool_result");
+});
+
+test("undo_last_change restores the exact pre-edit bytes after a real edit", async () => {
+	const { file, ctx } = setup();
+	const canonical = await resolveMutationTargetPath(file);
+	rememberReadSnapshot(canonical, TEXT);
+
+	const editTool = grabEditTool();
+	await editTool.execute("e1", {
+		path: file,
+		edits: [{ op: "replace", pos: `2#${computeLineHash(LINES, 1)}`, lines: ["TWO"] }],
+	}, undefined, undefined, ctx);
+	expect(readFileSync(file, "utf8")).toBe("one\nTWO\nthree\nfour\nfive\n");
+
+	const { registerUndoTool } = await import("../vendor/src/pi-hashline-edit/src/undo-tool");
+	let undoTool: any;
+	registerUndoTool({ registerTool: (t: any) => { undoTool = t; } } as any);
+
+	await undoTool.execute("u1", {}, undefined, undefined, ctx);
+	expect(readFileSync(file, "utf8")).toBe(TEXT);
+
+	// One shot: a second undo must refuse rather than silently no-op.
+	let err: any;
+	try {
+		await undoTool.execute("u2", {}, undefined, undefined, ctx);
+	} catch (e) { err = e; }
+	expect(String(err?.message)).toContain("E_NO_UNDO");
+});
