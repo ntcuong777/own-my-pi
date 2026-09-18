@@ -41,6 +41,7 @@ import {
 } from "./noop-loop-guard";
 import { getReadSnapshot, getReadSnapshotVersions, rememberReadSnapshot } from "./read-snapshot";
 import { threeWayMerge } from "./merge";
+import { assertSpansFresh } from "./span-freshness";
 import {
 	buildAppliedChangedResultText,
 	createRenderedEditMarkdownTheme,
@@ -316,6 +317,15 @@ async function executeEditPipeline(
 
 	const extraWarnings: string[] = [];
 	const resolved = resolveEditAnchors(toolEdits, extraWarnings);
+
+	// Endpoint hashes do not cover a long span's interior. Compare the whole
+	// replaced range against the last bytes hashline read for this file.
+	assertSpansFresh({
+		path,
+		edits: resolved,
+		liveContent: originalNormalized,
+		snapshotContent: absolutePath ? (getReadSnapshot(absolutePath) ?? undefined) : undefined,
+	});
 
 	// Both the direct-apply and snapshot-recovery paths return the same shape,
 	// differing only in the applied content, its per-result warnings, and the
