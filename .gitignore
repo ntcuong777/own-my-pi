@@ -5,3 +5,4 @@ auth.json
 sessions/
 web-allow.json
 codex-accounts.json
+vendor/node_modules/

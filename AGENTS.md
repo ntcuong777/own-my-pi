@@ -1,22 +1,23 @@
 # Pi harness guidelines
 
-This repository is the Pi daily-driver harness. Do not put Home Manager
-modules for Darwin/NixOS system config here. Those stay in nix-darwin.
+This repository is the Pi daily-driver harness. It does not depend on any host NixOS or nix-darwin checkout.
 
 ## What belongs here
 
-- `agent/**` Pi settings, roles, MCP, agents, custom extensions
-- `packages.json` npm plugin list
-- `nix/home-module.nix` the only Nix that this repo exports
-- `skills/` Pi-only skills
+- agent/** Pi settings, roles, MCP, agents, custom extensions
+- vendor/ plugin sources, first-party tarballs, and package-lock.json
+- nix/home-module.nix Home Manager module
+- nix/plugins.nix plugin install from the lockfile
+- skills/ Pi skills linked to ~/.pi/agent/skills/
 
-## What stays in nix-darwin
+## Plugins
 
-- `pi` CLI install
-- OMP fallback (`home/agent-configs/omp/`)
-- vendored Neuralwatt / Codex-account trees (linked into `~/.pi/agent/extensions/` by the home module)
+Do not use pi install npm: at runtime. Settings packages are local paths under ./vendor/node_modules/ (resolved against ~/.pi/agent/settings.json).
 
-## Plugins first
+First-party plugin tarballs live in vendor/tarballs/. Git checkouts:
+- vendor/src/pi-neuralwatt (aliou/pi-neuralwatt)
+- vendor/src/pi-codex-account (fadilsflow/pi-codex-account)
 
-Install an existing `pi install npm:` package before writing an extension.
+Transitive npm deps are pinned in vendor/package-lock.json and installed by nix build .#plugins.
+
 Custom spawn must enforce cwd; it must not create git worktrees.

@@ -1,0 +1,20 @@
+{
+  "name": "own-my-pi-plugins",
+  "private": true,
+  "description": "Vendored Pi plugins. Nix installs from local tarballs; no registry at runtime.",
+  "dependencies": {
+    "@aliou/pi-neuralwatt": "file:./tarballs/aliou-pi-neuralwatt-0.15.3.tgz",
+    "@juicesharp/rpiv-ask-user-question": "2.10.1",
+    "@juicesharp/rpiv-i18n": "2.10.1",
+    "@juicesharp/rpiv-todo": "2.10.1",
+    "@juicesharp/rpiv-web-tools": "2.10.1",
+    "@narumitw/pi-plan-mode": "0.58.0",
+    "pi-antiloop": "1.6.1",
+    "pi-ast-grep": "0.1.0",
+    "pi-codex-account": "file:./tarballs/pi-codex-account-0.1.1.tgz",
+    "pi-hashline-edit": "0.8.3",
+    "pi-lens": "4.2.1",
+    "pi-mcp-adapter": "2.34.0",
+    "pi-smart-compact": "9.7.0"
+  }
+}

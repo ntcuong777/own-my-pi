@@ -1,83 +1,13 @@
 # Pi harness
 
-Personal harness for raw Pi (`@earendil-works/pi-coding-agent`).
+Personal harness for raw Pi.
 
-This repo owns Pi **settings, plugins, custom extensions, agents, and skills**.
-nix-darwin (`ntcuong777/nix-conf`) only:
+Owns settings, vendored plugins, custom extensions, agents, and skills.
 
-- installs the `pi` binary (`home/activation/ai-cli-bootstrap.nix`)
-- imports `homeModules.default` from this flake
-- keeps OMP as fallback under `home/agent-configs/omp/`
+Plugins live in vendor/ and are installed by Nix from package-lock.json. Settings packages are local paths. No pi install npm at runtime.
 
-Checkout lives at `fork/own-my-pi` inside nix-darwin (git submodule).
+Vendored git plugins: aliou/pi-neuralwatt, fadilsflow/pi-codex-account.
+Vendored npm plugins: juicesharp rpiv-web-tools, rpiv-ask-user-question, rpiv-todo, pi-mcp-adapter, pi-hashline-edit, pi-smart-compact, pi-lens, pi-ast-grep, pi-antiloop, narumitw/pi-plan-mode.
 
-## Daily driver
-
-`pi` is the daily driver. `omp` stays installed until an explicit removal.
-
-Personal overlay: `pi-personal` or `/personal` (custom extension, not yet ported).
-Never writes company `settings.json`.
-
-## Plugin policy
-
-Prefer an existing Pi package over a custom rebuild.
-
-| Need | Package |
-|---|---|
-| Hashline edit (strict, no fuzzy) | `pi-hashline-edit` |
-| Compact + secret scrub | `pi-smart-compact` |
-| LSP / diagnostics | `pi-lens` (`@juicesharp/rpiv-lsp` does not exist) |
-| Structural search | `pi-ast-grep` (search only) |
-| Loop break | `pi-antiloop` |
-| Plan TUI | `@narumitw/pi-plan-mode` |
-| MCP | `pi-mcp-adapter` |
-| Ask / todo / web | juicesharp `rpiv-*` already in use |
-| Shell minimizer | `rtk.ts` + `rtk` binary from nix-darwin |
-
-Keep custom only when no plugin matches: `/personal`, spawn **cwd lock** (plugins create worktrees; we refuse parent-tree writes), web session gate, `/learn` tutor.
-
-OMP fallback still covers: fuzzy hashline, compaction cascade, `ast_edit`, TTSR.
-
-## Layout
-
-```
-agent/laptop/          host settings, roles, MCP, spawn, compaction
-agent/workstation/     same for workstation
-agent/shared/          personal.json
-agent/agents/          task.md, reviewer.md
-agent/extensions/      custom TypeScript (rtk.ts today)
-agent/bin/pi-personal  PI_PERSONAL=1 exec pi
-packages.json          npm packages Home Manager installs
-nix/home-module.nix    Home Manager module
-skills/                Pi-only skills (optional)
-```
-
-## Nix wiring
-
-nix-darwin flake input:
-
-```nix
-own-my-pi.url = "git+ssh://git@github.com/ntcuong777/own-my-pi.git";
-# then: nix flake lock --update-input own-my-pi
-```
-
-Home Manager:
-
-```nix
-imports = [ inputs.own-my-pi.homeModules.default ];
-```
-
-Links are out-of-store into this checkout. Edit, save, next `pi` start sees it.
-Package list changes still need `darwin-rebuild switch` (activation installs npm packages).
-
-## Submodule workflow
-
-From nix-darwin:
-
-```bash
-cd fork/own-my-pi
-# edit, commit, push origin main
-cd /etc/nix-darwin
-git add fork/own-my-pi
-git commit -m "chore(own-my-pi): bump submodule"
-```
+Home Manager: imports = [ inputs.own-my-pi.homeModules.default ]; extra args userhome and isWorkstation.
+Build plugins: nix build .#plugins

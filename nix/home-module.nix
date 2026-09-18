@@ -1,13 +1,9 @@
 # Home Manager module for this Pi harness.
 #
-# Nix-darwin imports this via `inputs.own-my-pi.homeModules.default`.
-# Config files are out-of-store symlinks into the live checkout
-# (`${repoRoot}/fork/own-my-pi`) so edits apply without a rebuild.
-# `self` is used to read packages.json from the flake; live links still
-# point at the submodule checkout, not the Nix store.
-#
-# Required extra args (already set by nix-darwin home.nix):
-#   repoRoot, isWorkstation, userhome
+# Import via `inputs.own-my-pi.homeModules.default`.
+# Config and skills copy from this flake (store paths). Plugin
+# node_modules come from `nix/plugins.nix` (lockfile + vendored sources).
+# Extra args: userhome, isWorkstation.
 { self }:
 {
   config,
@@ -15,93 +11,40 @@
   pkgs,
   userhome,
   isWorkstation ? false,
-  repoRoot,
   ...
 }:
 
 let
-  src = "${repoRoot}/fork/own-my-pi";
   host = if isWorkstation then "workstation" else "laptop";
-  packagesJson = builtins.fromJSON (builtins.readFile (self + "/packages.json"));
-  npmPackages = packagesJson.npm;
+  plugins = pkgs.callPackage ./plugins.nix { inherit self; };
 
-  mkLink = target: source: {
+  mkStoreLink = target: source: {
     name = target;
-    value.source = config.lib.file.mkOutOfStoreSymlink "${src}/${source}";
+    value.source = "${self}/${source}";
   };
 
-  extensionFiles = [
-    "rtk.ts"
-  ];
+  skillNames = builtins.attrNames (
+    lib.filterAttrs (_: t: t == "directory") (builtins.readDir "${self}/skills")
+  );
 
-  links = [
-    (mkLink ".pi/agent/settings.json" "agent/${host}/settings.json")
-    (mkLink ".pi/agent/model-roles.json" "agent/${host}/model-roles.json")
-    (mkLink ".pi/agent/mcp.json" "agent/${host}/mcp.json")
-    (mkLink ".pi/agent/spawn.json" "agent/${host}/spawn.json")
-    (mkLink ".pi/agent/compaction.json" "agent/${host}/compaction.json")
-    (mkLink ".pi/agent/personal.json" "agent/shared/personal.json")
-    (mkLink ".pi/agent/agents" "agent/agents")
-    (mkLink ".local/bin/pi-personal" "agent/bin/pi-personal")
-  ]
-  ++ map (name: mkLink ".pi/agent/extensions/${name}" "agent/extensions/${name}") extensionFiles;
+  extensionFiles = [ "rtk.ts" ];
 
-  activationPath = lib.makeBinPath [
-    pkgs.coreutils
-    pkgs.jq
-  ];
-  install = lib.getExe' pkgs.coreutils "install";
-  ln = lib.getExe' pkgs.coreutils "ln";
+  links =
+    [
+      (mkStoreLink ".pi/agent/settings.json" "agent/${host}/settings.json")
+      (mkStoreLink ".pi/agent/model-roles.json" "agent/${host}/model-roles.json")
+      (mkStoreLink ".pi/agent/mcp.json" "agent/${host}/mcp.json")
+      (mkStoreLink ".pi/agent/spawn.json" "agent/${host}/spawn.json")
+      (mkStoreLink ".pi/agent/compaction.json" "agent/${host}/compaction.json")
+      (mkStoreLink ".pi/agent/personal.json" "agent/shared/personal.json")
+      (mkStoreLink ".pi/agent/agents" "agent/agents")
+      (mkStoreLink ".local/bin/pi-personal" "agent/bin/pi-personal")
+    ]
+    ++ map (name: mkStoreLink ".pi/agent/extensions/${name}" "agent/extensions/${name}") extensionFiles
+    ++ map (name: mkStoreLink ".pi/agent/skills/${name}" "skills/${name}") skillNames;
 in
 {
-  home.file = lib.listToAttrs links;
-
-  home.activation.piHarnessPackages = lib.hm.dag.entryAfter [ "aiCliBootstrap" "writeBoundary" ] ''
-    set -euo pipefail
-    export HOME="${userhome}"
-    export PATH="${userhome}/.local/bin:${activationPath}:$PATH"
-    BIN_DIR="${userhome}/.local/bin"
-
-    if [ ! -x "$BIN_DIR/pi" ]; then
-      echo "[own-my-pi] Pi agent not installed; skip package install." >&2
-    else
-      PI_NODE_MODULES="${userhome}/.pi/agent/npm/node_modules"
-      PI_PACKAGES=(
-    ${lib.concatMapStrings (pkg: "        ${lib.escapeShellArg pkg}\n") npmPackages}
-      )
-
-      all_installed=true
-      for pkg in "''${PI_PACKAGES[@]}"; do
-        if [ ! -d "$PI_NODE_MODULES/$pkg" ]; then
-          all_installed=false
-          break
-        fi
-      done
-
-      if $all_installed; then
-        echo "[own-my-pi] All Pi packages already installed; skip." >&2
-      else
-        echo "[own-my-pi] Installing Pi packages..." >&2
-        for pkg in "''${PI_PACKAGES[@]}"; do
-          echo "[own-my-pi] pi install npm:$pkg" >&2
-          "$BIN_DIR/pi" install "npm:$pkg"
-        done
-      fi
-    fi
-  '';
-
-  home.activation.piHarnessVendorPlugins = lib.hm.dag.entryAfter [ "aiCliBootstrap" ] ''
-    set -euo pipefail
-    export HOME="${userhome}"
-    ext_dir="${userhome}/.pi/agent/extensions"
-    ${install} -dm755 "$ext_dir"
-    neuralwatt_vendor="${repoRoot}/home/agent-configs/omp/agent/extensions/pi-neuralwatt"
-    codex_vendor="${repoRoot}/home/agent-configs/omp/agent/extensions/omp-codex-account"
-    if [ -f "$neuralwatt_vendor/package.json" ]; then
-      ${ln} -sfn "$neuralwatt_vendor" "$ext_dir/pi-neuralwatt"
-    fi
-    if [ -f "$codex_vendor/package.json" ]; then
-      ${ln} -sfn "$codex_vendor" "$ext_dir/omp-codex-account"
-    fi
-  '';
+  home.file = lib.listToAttrs links // {
+    ".pi/agent/vendor".source = plugins;
+  };
 }

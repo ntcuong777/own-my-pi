@@ -1,0 +1,255 @@
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { ConfigLoader } from "@aliou/pi-utils-settings";
+import { afterEach, describe, expect, it } from "vitest";
+import packageJson from "../../../package.json";
+import { DEFAULT_CONFIG } from "../defaults";
+import type { NeuralwattConfig, ResolvedNeuralwattConfig } from "../types";
+import {
+  backupConfig,
+  enableAliasesForLegacyUsersMigration,
+  flatToNestedConfigMigration,
+  renameHiddenToEarlyAccessMigration,
+} from "./index";
+
+const migrationContext = Object.freeze({
+  filePath: "neuralwatt.json",
+  appliedMigrations: [],
+  fromVersion: "0.0.0",
+  toVersion: "0.11.0",
+});
+
+const tempDirs: string[] = [];
+
+async function tempConfigFile(): Promise<{ dir: string; filePath: string }> {
+  const dir = await mkdtemp(join(tmpdir(), "neuralwatt-config-"));
+  tempDirs.push(dir);
+  const filePath = join(dir, "neuralwatt.json");
+  await writeFile(filePath, '{"quotaCommand":false}\n', "utf-8");
+  return { dir, filePath };
+}
+
+async function runFlatMigration(
+  config: Record<string, unknown>,
+): Promise<unknown> {
+  const { filePath } = await tempConfigFile();
+  return flatToNestedConfigMigration.run(
+    config as never,
+    filePath,
+    migrationContext,
+  );
+}
+
+afterEach(async () => {
+  await Promise.all(
+    tempDirs.splice(0).map((dir) => rm(dir, { recursive: true })),
+  );
+});
+
+describe("renameHiddenToEarlyAccessMigration", () => {
+  const run = async (config: Record<string, unknown>) =>
+    (await renameHiddenToEarlyAccessMigration.run(
+      config as never,
+      "neuralwatt.json",
+      migrationContext,
+    )) as Record<string, unknown>;
+
+  it("runs only when the pre-rename key is present", () => {
+    const shouldRun = (config: Record<string, unknown>) =>
+      renameHiddenToEarlyAccessMigration.shouldRun?.(
+        config as never,
+        migrationContext,
+      );
+
+    expect(shouldRun({ provider: { includeHiddenModels: true } })).toBe(true);
+    expect(shouldRun({ provider: { includeEarlyAccessModels: true } })).toBe(
+      false,
+    );
+    expect(shouldRun({ quotaCommand: { enabled: true } })).toBe(false);
+    expect(shouldRun({ includeHiddenModels: true })).toBe(false);
+  });
+
+  it("renames the key and keeps other settings", async () => {
+    const migrated = await run({
+      provider: { includeHiddenModels: true, includeLegacyModelIds: true },
+      quotaCommand: { enabled: false },
+    });
+
+    expect(migrated).toEqual({
+      provider: {
+        includeEarlyAccessModels: true,
+        includeLegacyModelIds: true,
+      },
+      quotaCommand: { enabled: false },
+    });
+  });
+
+  it("keeps an existing new key and drops the old one", async () => {
+    const migrated = await run({
+      provider: { includeHiddenModels: true, includeEarlyAccessModels: false },
+    });
+
+    expect(migrated).toEqual({
+      provider: { includeEarlyAccessModels: false },
+    });
+  });
+});
+
+describe("enableAliasesForLegacyUsersMigration", () => {
+  const run = async (config: Record<string, unknown>) =>
+    (await enableAliasesForLegacyUsersMigration.run(
+      config as never,
+      "neuralwatt.json",
+      migrationContext,
+    )) as Record<string, unknown>;
+
+  it("runs only for legacy users without an explicit aliases setting", () => {
+    const shouldRun = (config: Record<string, unknown>) =>
+      enableAliasesForLegacyUsersMigration.shouldRun?.(
+        config as never,
+        migrationContext,
+      );
+
+    expect(shouldRun({ provider: { includeLegacyModelIds: true } })).toBe(true);
+    expect(
+      shouldRun({
+        provider: {
+          includeLegacyModelIds: true,
+          includeAliasedModelIds: false,
+        },
+      }),
+    ).toBe(false);
+    expect(shouldRun({ provider: { includeLegacyModelIds: false } })).toBe(
+      false,
+    );
+  });
+
+  it("enables aliases for configs with legacy model IDs enabled", async () => {
+    const migrated = await run({
+      provider: { includeLegacyModelIds: true, includeEarlyAccessModels: true },
+    });
+
+    expect(migrated).toEqual({
+      provider: {
+        includeLegacyModelIds: true,
+        includeEarlyAccessModels: true,
+        includeAliasedModelIds: true,
+      },
+    });
+  });
+});
+
+describe("flatToNestedConfigMigration", () => {
+  it("converts flat config to nested config", async () => {
+    const migrated = await runFlatMigration({
+      quotaCommand: false,
+      quotaWarnings: true,
+      subBarIntegration: false,
+      includeLegacyModelIds: true,
+      includeHiddenModels: true,
+    });
+
+    expect(migrated).toEqual({
+      provider: {
+        includeLegacyModelIds: true,
+        includeHiddenModels: true,
+      },
+      quotaCommand: { enabled: false },
+      quotaWarnings: { enabled: true },
+      subBarIntegration: { enabled: false },
+    });
+  });
+
+  it("preserves nested values and fills missing values from flat keys", async () => {
+    const mixed = {
+      quotaWarnings: false,
+      includeHiddenModels: false,
+      provider: { includeEarlyAccessModels: true },
+      quotaCommand: { enabled: true },
+    } as Record<string, unknown>;
+    const migrated = await runFlatMigration(mixed);
+
+    expect(migrated).toEqual({
+      provider: { includeEarlyAccessModels: true, includeHiddenModels: false },
+      quotaCommand: { enabled: true },
+      quotaWarnings: { enabled: false },
+      subBarIntegration: {},
+    });
+  });
+
+  it("creates a backup next to the migrated config", async () => {
+    const { dir, filePath } = await tempConfigFile();
+    await flatToNestedConfigMigration.run(
+      { quotaCommand: false } as never,
+      filePath,
+      migrationContext,
+    );
+
+    const backupPath = join(
+      dir,
+      `neuralwatt.v${packageJson.version}-flat-config.json`,
+    );
+    await expect(readFile(backupPath, "utf-8")).resolves.toBe(
+      '{"quotaCommand":false}\n',
+    );
+  });
+
+  it("does not overwrite an existing backup", async () => {
+    const { dir, filePath } = await tempConfigFile();
+    const backupPath = join(
+      dir,
+      `neuralwatt.v${packageJson.version}-flat-config.json`,
+    );
+    await writeFile(backupPath, "keep me", "utf-8");
+
+    await backupConfig(filePath);
+
+    await expect(readFile(backupPath, "utf-8")).resolves.toBe("keep me");
+  });
+
+  it("fails the migration when the backup cannot be written", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "neuralwatt-config-"));
+    tempDirs.push(dir);
+
+    await expect(
+      flatToNestedConfigMigration.run(
+        { quotaCommand: false } as never,
+        join(dir, "missing.json"),
+        migrationContext,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("provides migration messages through ConfigLoader.drainMessages", async () => {
+    const cwd = process.cwd();
+    const dir = await mkdtemp(join(tmpdir(), "neuralwatt-loader-"));
+    tempDirs.push(dir);
+    const configDir = join(dir, ".pi/extensions");
+    await mkdir(configDir, { recursive: true });
+    await writeFile(
+      join(configDir, "neuralwatt.json"),
+      '{"quotaCommand":false}\n',
+      "utf-8",
+    );
+
+    try {
+      process.chdir(dir);
+      const loader = new ConfigLoader<
+        NeuralwattConfig,
+        ResolvedNeuralwattConfig
+      >("neuralwatt", DEFAULT_CONFIG, {
+        scopes: ["local"],
+        migrations: [flatToNestedConfigMigration as never],
+      });
+
+      await loader.load();
+
+      expect(loader.drainMessages()).toEqual([
+        "Config migrated to the nested format. A backup was written next to the original config file.",
+      ]);
+    } finally {
+      process.chdir(cwd);
+    }
+  });
+});

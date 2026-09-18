@@ -1,15 +1,6 @@
 Custom Pi extensions live here.
 
-Tracked now:
-- rtk.ts — rewrite bash through the `rtk` binary
+Tracked: rtk.ts (rtk binary must be on PATH).
+Coming: model-roles, personal-mode, spawn cwd lock, cwd-scope, web-permission, learn-mode.
 
-Coming (this repo, not nix-darwin):
-- model-roles.ts
-- personal-mode.ts
-- spawn/ (cwd lock + timeout; does not create worktrees)
-- cwd-scope.ts
-- web-permission.ts
-- learn-mode.ts
-
-Do not put npm plugins here. Those are listed in packages.json and
-installed with `pi install npm:<name>`.
+Npm plugins are vendored under vendor/, not here.

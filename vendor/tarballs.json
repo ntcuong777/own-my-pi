@@ -1,0 +1,92 @@
+[
+  {
+    "file": "rpiv-web-tools-2.10.1.tgz",
+    "url": "https://registry.npmjs.org/@juicesharp/rpiv-web-tools/-/rpiv-web-tools-2.10.1.tgz",
+    "sha256": "ec859d6ca8cda5cb5b13469d51a390a2bbacc84132e2212f6fc1f177af30efe6",
+    "bytes": 43829
+  },
+  {
+    "file": "rpiv-ask-user-question-2.10.1.tgz",
+    "url": "https://registry.npmjs.org/@juicesharp/rpiv-ask-user-question/-/rpiv-ask-user-question-2.10.1.tgz",
+    "sha256": "9811bf1f79152673f0ffdacb0cab8a4f1403b0cf5a80c4cc6e28dcdc7a69c9cd",
+    "bytes": 83888
+  },
+  {
+    "file": "rpiv-todo-2.10.1.tgz",
+    "url": "https://registry.npmjs.org/@juicesharp/rpiv-todo/-/rpiv-todo-2.10.1.tgz",
+    "sha256": "6b5b551a163081164569bf15e996bbfe86a7ac279ec9626012c2f73f4e989f4e",
+    "bytes": 35279
+  },
+  {
+    "file": "rpiv-config-2.10.1.tgz",
+    "url": "https://registry.npmjs.org/@juicesharp/rpiv-config/-/rpiv-config-2.10.1.tgz",
+    "sha256": "730c028d189fc3f7a32bfc5943e9f2ebb75c59c93edaa05510bc8a054bb31eb3",
+    "bytes": 7801
+  },
+  {
+    "file": "rpiv-i18n-2.10.1.tgz",
+    "url": "https://registry.npmjs.org/@juicesharp/rpiv-i18n/-/rpiv-i18n-2.10.1.tgz",
+    "sha256": "b7caf98dc0aeaf8e17c381a259b67af0e0415b667778fd46cde3c78e23126d6e",
+    "bytes": 16487
+  },
+  {
+    "file": "pi-mcp-adapter-2.34.0.tgz",
+    "url": "https://registry.npmjs.org/pi-mcp-adapter/-/pi-mcp-adapter-2.34.0.tgz",
+    "sha256": "5cca900df597299e39facbe3b78ff27bdaaee9103057700774541bf9cfb2602c",
+    "bytes": 1606495
+  },
+  {
+    "file": "pi-hashline-edit-0.8.3.tgz",
+    "url": "https://registry.npmjs.org/pi-hashline-edit/-/pi-hashline-edit-0.8.3.tgz",
+    "sha256": "8205e8d9854f69124405f5f03f33384db9880738f4ef1ef5c9051c756331a076",
+    "bytes": 60631
+  },
+  {
+    "file": "pi-smart-compact-9.7.0.tgz",
+    "url": "https://registry.npmjs.org/pi-smart-compact/-/pi-smart-compact-9.7.0.tgz",
+    "sha256": "1dde3bd43b2d5f28fb9a5f85b79501498577feb74c5dc2bb8cbd9b5d7a92f921",
+    "bytes": 1416756
+  },
+  {
+    "file": "pi-lens-4.2.1.tgz",
+    "url": "https://registry.npmjs.org/pi-lens/-/pi-lens-4.2.1.tgz",
+    "sha256": "067fe1e3c0cb64cb86b65dca82440ee6ee90844eb9c23e691385ddb50eb705d6",
+    "bytes": 5948120
+  },
+  {
+    "file": "pi-ast-grep-0.1.0.tgz",
+    "url": "https://registry.npmjs.org/pi-ast-grep/-/pi-ast-grep-0.1.0.tgz",
+    "sha256": "ba3bcd413cfd74c95f5d950aa0c629c626cd4239220fa7dd215d72c07906fab1",
+    "bytes": 10729
+  },
+  {
+    "file": "pi-antiloop-1.6.1.tgz",
+    "url": "https://registry.npmjs.org/pi-antiloop/-/pi-antiloop-1.6.1.tgz",
+    "sha256": "2965aba69339953988c10189c2b95b16ed20406cca1bafb90f84a79484f47188",
+    "bytes": 41263
+  },
+  {
+    "file": "pi-plan-mode-0.58.0.tgz",
+    "url": "https://registry.npmjs.org/@narumitw/pi-plan-mode/-/pi-plan-mode-0.58.0.tgz",
+    "sha256": "2b5c286d8596ead7d08f1efd228e204debf83cfbd877c0951349bcf191a82f6c",
+    "bytes": 207745
+  },
+  {
+    "file": "pi-tui-kit-0.59.0.tgz",
+    "url": "https://registry.npmjs.org/@narumitw/pi-tui-kit/-/pi-tui-kit-0.59.0.tgz",
+    "sha256": "34a81a5b94ad4fb621c4c49239bc5ec6ea0149d2e400b327a6867f75b7b67035",
+    "bytes": 70318
+  },
+  {
+    "file": "pi-utils-settings-0.21.0.tgz",
+    "url": "https://registry.npmjs.org/@aliou/pi-utils-settings/-/pi-utils-settings-0.21.0.tgz",
+    "sha256": "04054c11f871b133439ffafa2aca2acbb328120f099319820c92092adf1fa7bd",
+    "bytes": 58558
+  },
+  {
+    "file": "pi-utils-ui-0.5.0.tgz",
+    "url": "https://registry.npmjs.org/@aliou/pi-utils-ui/-/pi-utils-ui-0.5.0.tgz",
+    "sha256": "3085eb479089502ccc8d3b75beb11681602bfcbc90f8f3b4176328c2953bcaea",
+    "bytes": 16852
+  }
+]
