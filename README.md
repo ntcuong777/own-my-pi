@@ -9,7 +9,7 @@ nix-darwin (`ntcuong777/nix-conf`) only:
 - imports `homeModules.default` from this flake
 - keeps OMP as fallback under `home/agent-configs/omp/`
 
-Checkout lives at `fork/pi-harness` inside nix-darwin (git submodule).
+Checkout lives at `fork/own-my-pi` inside nix-darwin (git submodule).
 
 ## Daily driver
 
@@ -57,14 +57,14 @@ skills/                Pi-only skills (optional)
 nix-darwin flake input:
 
 ```nix
-pi-harness.url = "git+ssh://git@github.com/ntcuong777/pi-harness.git";
-# then: nix flake lock --update-input pi-harness
+own-my-pi.url = "git+ssh://git@github.com/ntcuong777/own-my-pi.git";
+# then: nix flake lock --update-input own-my-pi
 ```
 
 Home Manager:
 
 ```nix
-imports = [ inputs.pi-harness.homeModules.default ];
+imports = [ inputs.own-my-pi.homeModules.default ];
 ```
 
 Links are out-of-store into this checkout. Edit, save, next `pi` start sees it.
@@ -75,9 +75,9 @@ Package list changes still need `darwin-rebuild switch` (activation installs npm
 From nix-darwin:
 
 ```bash
-cd fork/pi-harness
+cd fork/own-my-pi
 # edit, commit, push origin main
 cd /etc/nix-darwin
-git add fork/pi-harness
-git commit -m "chore(pi-harness): bump submodule"
+git add fork/own-my-pi
+git commit -m "chore(own-my-pi): bump submodule"
 ```

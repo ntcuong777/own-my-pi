@@ -1,8 +1,8 @@
 # Home Manager module for this Pi harness.
 #
-# Nix-darwin imports this via `inputs.pi-harness.homeModules.default`.
+# Nix-darwin imports this via `inputs.own-my-pi.homeModules.default`.
 # Config files are out-of-store symlinks into the live checkout
-# (`${repoRoot}/fork/pi-harness`) so edits apply without a rebuild.
+# (`${repoRoot}/fork/own-my-pi`) so edits apply without a rebuild.
 # `self` is used to read packages.json from the flake; live links still
 # point at the submodule checkout, not the Nix store.
 #
@@ -20,7 +20,7 @@
 }:
 
 let
-  src = "${repoRoot}/fork/pi-harness";
+  src = "${repoRoot}/fork/own-my-pi";
   host = if isWorkstation then "workstation" else "laptop";
   packagesJson = builtins.fromJSON (builtins.readFile (self + "/packages.json"));
   npmPackages = packagesJson.npm;
@@ -63,7 +63,7 @@ in
     BIN_DIR="${userhome}/.local/bin"
 
     if [ ! -x "$BIN_DIR/pi" ]; then
-      echo "[pi-harness] Pi agent not installed; skip package install." >&2
+      echo "[own-my-pi] Pi agent not installed; skip package install." >&2
     else
       PI_NODE_MODULES="${userhome}/.pi/agent/npm/node_modules"
       PI_PACKAGES=(
@@ -79,11 +79,11 @@ in
       done
 
       if $all_installed; then
-        echo "[pi-harness] All Pi packages already installed; skip." >&2
+        echo "[own-my-pi] All Pi packages already installed; skip." >&2
       else
-        echo "[pi-harness] Installing Pi packages..." >&2
+        echo "[own-my-pi] Installing Pi packages..." >&2
         for pkg in "''${PI_PACKAGES[@]}"; do
-          echo "[pi-harness] pi install npm:$pkg" >&2
+          echo "[own-my-pi] pi install npm:$pkg" >&2
           "$BIN_DIR/pi" install "npm:$pkg"
         done
       fi
