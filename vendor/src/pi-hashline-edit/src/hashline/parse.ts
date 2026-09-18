@@ -193,10 +193,42 @@ function assertNoDisplayPrefixes(lines: string[]): void {
 			DIFF_MINUS_RE.test(line)
 		) {
 			throw new Error(
-				`[E_INVALID_PATCH] "lines" must contain literal file content, not rendered "LINE#HASH:" or diff "+/-" prefixes. Offending line: ${JSON.stringify(line)}`,
+				`[E_INVALID_PATCH] "lines" still contains a rendered "LINE#HASH:" or diff prefix after one strip pass — this looks like nested read/diff output, not file content. Offending line: ${JSON.stringify(line)}`,
 			);
 		}
 	}
+}
+
+/**
+ * Remove ONE leading display prefix from a line: `12#MQ:`, `+12#MQ:`, `#MQ:`,
+ * or a diff-minus gutter. Returns the line unchanged when nothing matched.
+ *
+ * Pro strips these slips and warns instead of rejecting the call, because a
+ * model pasting a read row into `lines` is a copy slip, not a semantic error.
+ * Only one pass runs: a line that still looks like a display row after
+ * stripping is nested rendered output, which is rejected by
+ * assertNoDisplayPrefixes below.
+ */
+export function stripDisplayPrefix(line: string): string {
+	for (const re of [DISPLAY_PREFIX_PLUS_RE, DISPLAY_PREFIX_RE, DIFF_MINUS_RE]) {
+		const match = re.exec(line);
+		if (match) return line.slice(match[0].length);
+	}
+	return line;
+}
+
+export function stripDisplayPrefixes(lines: string[]): {
+	lines: string[];
+	stripped: number;
+} {
+	let stripped = 0;
+	const out = lines.map((line) => {
+		if (!line.length) return line;
+		const next = stripDisplayPrefix(line);
+		if (next !== line) stripped += 1;
+		return next;
+	});
+	return { lines: out, stripped };
 }
 
 /**
@@ -207,8 +239,12 @@ function assertNoDisplayPrefixes(lines: string[]): void {
  * rejected by `assertNoDisplayPrefixes` — the model must send literal file
  * content, never rendered read or diff output.
  */
-function hashlineParseText(edit: string[] | undefined): string[] {
-	const lines = edit ?? [];
+function hashlineParseText(
+	edit: string[] | undefined,
+	stripCount: { n: number },
+): string[] {
+	const { lines, stripped } = stripDisplayPrefixes(edit ?? []);
+	stripCount.n += stripped;
 	assertNoDisplayPrefixes(lines);
 	return lines;
 }
@@ -324,8 +360,12 @@ function assertEditItem(edit: Record<string, unknown>, index: number): void {
 	}
 }
 
-export function resolveEditAnchors(edits: HashlineToolEdit[]): HashlineEdit[] {
+export function resolveEditAnchors(
+	edits: HashlineToolEdit[],
+	warnings?: string[],
+): HashlineEdit[] {
 	const result: HashlineEdit[] = [];
+	const stripCount = { n: 0 };
 	for (const [index, edit] of edits.entries()) {
 		assertEditItem(edit as Record<string, unknown>, index);
 
@@ -336,7 +376,7 @@ export function resolveEditAnchors(edits: HashlineToolEdit[]): HashlineEdit[] {
 					op: "replace",
 					pos: parseAnchorRef(edit.pos!),
 					...(edit.end ? { end: parseAnchorRef(edit.end) } : {}),
-					lines: hashlineParseText(edit.lines),
+					lines: hashlineParseText(edit.lines, stripCount),
 				});
 				break;
 			}
@@ -344,7 +384,7 @@ export function resolveEditAnchors(edits: HashlineToolEdit[]): HashlineEdit[] {
 				result.push({
 					op: "append",
 					...(edit.pos ? { pos: parseAnchorRef(edit.pos) } : {}),
-					lines: hashlineParseText(edit.lines),
+					lines: hashlineParseText(edit.lines, stripCount),
 				});
 				break;
 			}
@@ -352,7 +392,7 @@ export function resolveEditAnchors(edits: HashlineToolEdit[]): HashlineEdit[] {
 				result.push({
 					op: "prepend",
 					...(edit.pos ? { pos: parseAnchorRef(edit.pos) } : {}),
-					lines: hashlineParseText(edit.lines),
+					lines: hashlineParseText(edit.lines, stripCount),
 				});
 				break;
 			}
@@ -365,6 +405,11 @@ export function resolveEditAnchors(edits: HashlineToolEdit[]): HashlineEdit[] {
 				break;
 			}
 		}
+	}
+	if (stripCount.n > 0 && warnings) {
+		warnings.push(
+			`Stripped a rendered display prefix from ${stripCount.n} replacement line(s). "lines" must be literal file content; the LINE#HASH prefix is context for you, not payload.`,
+		);
 	}
 	return result;
 }

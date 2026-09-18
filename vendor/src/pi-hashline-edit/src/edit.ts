@@ -314,9 +314,8 @@ async function executeEditPipeline(
 		: undefined;
 	const originalNormalized = normalizeToLF(rawContent);
 
-	const resolved = resolveEditAnchors(toolEdits);
-
 	const extraWarnings: string[] = [];
+	const resolved = resolveEditAnchors(toolEdits, extraWarnings);
 
 	// Both the direct-apply and snapshot-recovery paths return the same shape,
 	// differing only in the applied content, its per-result warnings, and the
