@@ -1,2 +1,6 @@
 [test]
 preload = ["./tests/setup.ts"]
+# Scope discovery to our own suite. Without this, `bun test` also matches
+# vendor/src/*/tests/** (vendored upstream snapshots we do not own), and our
+# pi-coding-agent/pi-tui stubs in tests/setup.ts cannot satisfy their imports.
+root = "tests"
