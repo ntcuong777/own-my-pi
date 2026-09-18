@@ -49,5 +49,21 @@
       }
     }
   },
-  "lastChangelogVersion": "0.85.1"
+  "lastChangelogVersion": "0.85.1",
+  "autocompleteMaxVisible": 5,
+  "steeringMode": "one-at-a-time",
+  "followUpMode": "one-at-a-time",
+  "transport": "auto",
+  "markdown": {
+    "mermaid": "streaming"
+  },
+  "showCacheMissNotices": true,
+  "collapseChangelog": true,
+  "defaultProjectTrust": "ask",
+  "doubleEscapeAction": "tree",
+  "modelThinkingLevels": {
+    "zai/glm-5.3-flash": "high"
+  },
+  "tuiMode": "regular",
+  "fullscreenScrollbar": "auto"
 }
