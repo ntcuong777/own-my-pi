@@ -13,6 +13,11 @@ Tracked:
   Do not also set `toggleShortcut` in pi-plan-mode settings.
 - `skill-summon/` — typing `/` after prose or after `/skill:foo …` opens
   the skill completion popup (Pi only auto-opens at prompt start).
+- `goal/` — `/goal` autonomous completion. `goal_complete` /
+  `goal_blocked`. Continues on `agent_settled`. Optional
+  `~/.pi/piex-dev/goal/goal.json`.
+  From [piex-dev/piex](https://github.com/piex-dev/piex/tree/main/extensions/goal)
+  (`5cd4467`, @piex-dev/goal 0.1.0, MIT, debugtalk).
 - `plan-review-feedback.ts` — `/plan-refine` sends plan-revision notes.
   pi-plan-mode has Stay/Implement/Export, not OMP's Refine overlay.
 - `redact-secrets.ts` — scrub secrets and PII from **local file/shell tool

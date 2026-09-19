@@ -1,0 +1,8 @@
+Vendored from https://github.com/piex-dev/piex/tree/main/extensions/goal
+Package: @piex-dev/goal 0.1.0
+Author: debugtalk <mail@debugtalk.com>
+Commit: 5cd4467cbc89ff5dd5dd600f1310c75d71ab1e02
+License: MIT (see LICENSE)
+
+index.ts is a local loader shim so Pi auto-discovers this subdirectory.
+Upstream source files under src/ are unmodified.
