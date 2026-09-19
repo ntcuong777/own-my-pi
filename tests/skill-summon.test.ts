@@ -7,6 +7,7 @@ import {
 	wrapSkillSummonProvider,
 } from "../agent/extensions/skill-summon/provider";
 import type { SkillSummonItem, SkillSummonProvider } from "../agent/extensions/skill-summon/provider";
+import { registerSkillSummon } from "../agent/extensions/skill-summon/register";
 
 const skills: SkillSummonItem[] = [
 	{ value: "skill:security-scan", label: "skill:security-scan", description: "Scan" },
@@ -180,5 +181,55 @@ describe("patchEditorSlashTrigger", () => {
 		editor.insertCharacter("/");
 		expect(editor.text).toBe("/");
 		expect(editor.triggered).toBe(0);
+	});
+});
+describe("registerSkillSummon", () => {
+	test("does not call addAutocompleteProvider on the factory pi object", () => {
+		const events: Array<(event: unknown, ctx: { ui?: { addAutocompleteProvider?: Function } }) => void> = [];
+		const pi = {
+			addAutocompleteProvider() {
+				throw new Error("pi.addAutocompleteProvider should not be called");
+			},
+			on(_event: "session_start", handler: (event: unknown, ctx: { ui?: { addAutocompleteProvider?: Function } }) => void) {
+				events.push(handler);
+			},
+		};
+		registerSkillSummon(pi);
+		expect(events).toHaveLength(1);
+	});
+
+	test("registers on ctx.ui during session_start", async () => {
+		const wrapped: SkillSummonProvider[] = [];
+		const ui = {
+			addAutocompleteProvider(factory: (current: SkillSummonProvider) => SkillSummonProvider) {
+				wrapped.push(factory(fakeInner(commands)));
+			},
+		};
+		let handler: ((event: unknown, ctx: { ui?: typeof ui }) => void) | undefined;
+		registerSkillSummon({
+			on(_event, next) {
+				handler = next;
+			},
+		});
+		await handler?.({ type: "session_start", reason: "resume" }, { ui });
+		expect(wrapped).toHaveLength(1);
+		const line = "/skill:security-scan then /";
+		const result = await wrapped[0]!.getSuggestions([line], 0, line.length, {
+			signal: new AbortController().signal,
+		});
+		expect(result?.items.map((item) => item.value)).toEqual([
+			"skill:security-scan",
+			"skill:reviewer",
+		]);
+	});
+
+	test("skips session_start when ctx.ui has no addAutocompleteProvider", async () => {
+		let handler: ((event: unknown, ctx: { ui?: object }) => void) | undefined;
+		registerSkillSummon({
+			on(_event, next) {
+				handler = next;
+			},
+		});
+		await handler?.({ type: "session_start", reason: "resume" }, { ui: {} });
 	});
 });
