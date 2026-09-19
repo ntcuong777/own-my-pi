@@ -11,21 +11,22 @@ This repository is the Pi daily-driver harness. It does not depend on any host N
 - nix/home-module.nix Home Manager module (live out-of-store symlinks, Nix-store pi)
 - nix/plugins.nix copies src trees and installs transitives (seed vendor/node_modules)
 - nix/pi.nix wraps pinned @earendil-works/pi-coding-agent into the Nix store
-- skills/ Pi skills live-linked to ~/.pi/agent/skills/
+- skills/ Pi skills live-linked per directory into ~/.agents/skills/
 
 ## Skills
 
-`skills/` is live-linked to ~/.pi/agent/skills. Pi also auto-loads
-~/.agents/skills. Host settings.json adds ~/.claude/skills and
-~/.codex/skills so Claude Code and Codex skills are available too.
-Shared names belong only here; leftover ~/.agents/skills copies of
-those names are dropped on Home Manager activation.
+`skills/` is live-linked per directory into ~/.agents/skills so host-owned
+skills there (using-superpowers, …) still coexist. settings.json lists
+~/.agents/skills first (Pi's builtin default is ~/.pi/agent/skills, which
+this harness no longer installs). Host settings.json also adds
+~/.claude/skills and ~/.codex/skills.
 
 ## Live edit
 
-Home Manager points ~/.pi/agent/{settings,skills,extensions,agents,vendor} at this
-checkout via mkOutOfStoreSymlink. Edit JSON, skills, custom extensions, or
-vendor/src and the next Pi start sees it. No NixOS / nix-darwin rebuild.
+Home Manager points ~/.pi/agent/{settings,extensions,agents,vendor} and
+~/.agents/skills/<name> at this checkout via mkOutOfStoreSymlink. Edit
+JSON, skills, custom extensions, or vendor/src and the next Pi start
+sees it. No NixOS / nix-darwin rebuild.
 
 vendor/node_modules is gitignored. First activation copies third-party deps
 from `nix build .#plugins` and rewrites first-party names to vendor/src.

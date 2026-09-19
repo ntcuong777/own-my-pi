@@ -1,10 +1,10 @@
 # Skill Index
 
-Pi loads these from `$HOME/.pi/agent/skills`. Host `settings.json` also
-points at `$HOME/.claude/skills` and `$HOME/.codex/skills`. Pi already
-scans `$HOME/.agents/skills`. Shared names belong only here;
-leftover `$HOME/.agents/skills/<name>` copies are dropped on Home
-Manager activation.
+These directories live at `$HOME/.agents/skills`. Host `settings.json`
+lists that path first, then `$HOME/.claude/skills` and
+`$HOME/.codex/skills`. Pi's builtin default (`$HOME/.pi/agent/skills`)
+is unused by this harness. Host-owned names (using-superpowers, …)
+stay in `$HOME/.agents/skills` alongside these live links.
 
 Frequent skills stay top-level. `skill-library` is the lazy catalog.
 
@@ -32,7 +32,7 @@ Frequent skills stay top-level. `skill-library` is the lazy catalog.
 
 ## Lazy library
 
-`$HOME/.pi/agent/skills/skill-library/`
+`$HOME/.agents/skills/skill-library/`
 
 Topics:
 

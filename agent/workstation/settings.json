@@ -22,6 +22,7 @@
     "./vendor/node_modules/pi-cursor-sdk"
   ],
   "skills": [
+    "~/.agents/skills",
     "~/.claude/skills",
     "~/.codex/skills"
   ],

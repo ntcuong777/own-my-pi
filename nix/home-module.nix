@@ -22,6 +22,15 @@ let
   mkLive = rel: config.lib.file.mkOutOfStoreSymlink "${harnessRoot}/${rel}";
   linker = "${harnessRoot}/vendor/link-node-modules.sh";
   homeDir = config.home.homeDirectory;
+  # Per-skill links so host-owned ~/.agents/skills (using-superpowers, …)
+  # can coexist. INDEX.md is skipped; only skill directories are linked.
+  skillDirs = lib.filterAttrs (_: type: type == "directory") (
+    builtins.readDir (self + "/skills")
+  );
+  skillLinks = lib.mapAttrs' (name: _: {
+    name = ".agents/skills/${name}";
+    value.source = mkLive "skills/${name}";
+  }) skillDirs;
 in
 {
   assertions = [
@@ -43,10 +52,10 @@ in
     ".pi/agent/hashline.json".source = mkLive "agent/shared/hashline.json";
     ".pi/agent/agents".source = mkLive "agent/agents";
     ".pi/agent/extensions".source = mkLive "agent/extensions";
-    ".pi/agent/skills".source = mkLive "skills";
     ".pi/agent/vendor".source = mkLive "vendor";
     ".local/bin/pi-personal".source = mkLive "agent/bin/pi-personal";
-  };
+  }
+  // skillLinks;
 
   # ~/.local/bin is prepended to PATH. A leftover npm launcher would hide
   # the Nix-store pi from home.packages.
@@ -70,22 +79,12 @@ in
       --store ${lib.escapeShellArg "${plugins}"}
   '';
 
-  # Pi auto-loads ~/.agents/skills. Shared names belong in this harness.
-  # Home Manager often leaves dropped ~/.agents/skills/<name> symlinks in a
-  # pre-existing directory, which then show up as collisions.
-  home.activation.pruneAgentsSkillCollisions = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
-    agentsSkills=${lib.escapeShellArg "${homeDir}/.agents/skills"}
-    harnessSkills=${lib.escapeShellArg "${harnessRoot}/skills"}
-    if [ -d "$agentsSkills" ] && [ -d "$harnessSkills" ]; then
-      for skill in "$harnessSkills"/*; do
-        [ -d "$skill" ] || continue
-        name="$(basename "$skill")"
-        path="$agentsSkills/$name"
-        if [ -L "$path" ]; then
-          echo "[own-my-pi] dropping leftover ~/.agents/skills/$name (harness owns this name)" >&2
-          $DRY_RUN_CMD rm -f "$path"
-        fi
-      done
+  # Skills moved to ~/.agents/skills. Drop the old whole-tree live link.
+  home.activation.dropLegacyPiSkills = lib.hm.dag.entryAfter [ "linkGeneration" ] ''
+    skills=${lib.escapeShellArg "${homeDir}/.pi/agent/skills"}
+    if [ -L "$skills" ]; then
+      echo "[own-my-pi] removing leftover ~/.pi/agent/skills (moved to ~/.agents/skills)" >&2
+      $DRY_RUN_CMD rm -f "$skills"
     fi
   '';
 }
