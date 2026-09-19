@@ -3,13 +3,15 @@
 These directories live at `$HOME/.agents/skills`. Host `settings.json`
 lists that path first, then `$HOME/.claude/skills` and
 `$HOME/.codex/skills`. Pi's builtin default (`$HOME/.pi/agent/skills`)
-is unused by this harness. Host-owned names (using-superpowers, …)
-stay in `$HOME/.agents/skills` alongside these live links.
+is unused by this harness.
 
 Frequent skills stay top-level. `skill-library` is the lazy catalog.
 
 ## Active top-level skills
 
+- `using-superpowers`
+- `dispatching-parallel-agents`
+- `finishing-a-development-branch`
 - `brainstorming`
 - `caveman`
 - `caveman-commit`

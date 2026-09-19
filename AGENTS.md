@@ -15,11 +15,11 @@ This repository is the Pi daily-driver harness. It does not depend on any host N
 
 ## Skills
 
-`skills/` is live-linked per directory into ~/.agents/skills so host-owned
-skills there (using-superpowers, …) still coexist. settings.json lists
-~/.agents/skills first (Pi's builtin default is ~/.pi/agent/skills, which
-this harness no longer installs). Host settings.json also adds
-~/.claude/skills and ~/.codex/skills.
+`skills/` is live-linked per directory into ~/.agents/skills, including
+using-superpowers, dispatching-parallel-agents, and
+finishing-a-development-branch. settings.json lists ~/.agents/skills first
+(Pi's builtin default is ~/.pi/agent/skills, which this harness no longer
+installs). Host settings.json also adds ~/.claude/skills and ~/.codex/skills.
 
 ## Live edit
 

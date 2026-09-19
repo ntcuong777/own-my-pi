@@ -166,7 +166,7 @@ describe("shouldRedactToolResult", () => {
 		expect(
 			shouldRedactToolResult({
 				toolName: "read",
-				input: { path: "/home/ntcuong777/.pi/agent/skills/using-superpowers/SKILL.md" },
+				input: { path: "/home/ntcuong777/.agents/skills/using-superpowers/SKILL.md" },
 			}),
 		).toBe(false);
 	});

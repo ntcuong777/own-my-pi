@@ -27,9 +27,9 @@ Side conversation: pi-btw (`/btw` opens a parallel sub-session).
 
 Cursor models inside Pi: pi-cursor-sdk (`cursor/grok-4.6` via `/login` → Cursor).
 
-Skills also load from ~/.claude/skills and ~/.codex/skills via the
-settings.json `skills` array. ~/.agents/skills is already a Pi global
-root. On a name collision, ~/.pi/agent/skills wins.
+Skills live under ~/.agents/skills (per-directory live links from skills/).
+settings.json also lists ~/.claude/skills and ~/.codex/skills. Pi's builtin
+~/.pi/agent/skills is unused.
 
 The `pi` binary is a Nix-store package (`nix build .#pi`), not `npm install`
 into ~/.local. Flake input `pi` pins github:earendil-works/pi; the derivation

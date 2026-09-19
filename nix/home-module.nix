@@ -22,8 +22,7 @@ let
   mkLive = rel: config.lib.file.mkOutOfStoreSymlink "${harnessRoot}/${rel}";
   linker = "${harnessRoot}/vendor/link-node-modules.sh";
   homeDir = config.home.homeDirectory;
-  # Per-skill links so host-owned ~/.agents/skills (using-superpowers, …)
-  # can coexist. INDEX.md is skipped; only skill directories are linked.
+  # Per-skill links. INDEX.md is skipped; only skill directories are linked.
   skillDirs = lib.filterAttrs (_: type: type == "directory") (
     builtins.readDir (self + "/skills")
   );

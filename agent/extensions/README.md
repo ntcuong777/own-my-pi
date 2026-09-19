@@ -1,4 +1,5 @@
 Custom Pi extensions live here. Auto-discovered from `~/.pi/agent/extensions/`.
+Pi loads top-level `*.ts` plus each subdirectory's `index.ts`.
 
 Tracked:
 
@@ -23,6 +24,30 @@ Tracked:
   before the tool runs — or blocked with `[E_REDACT_PLACEHOLDER]` when the
   token is unknown. Regex technical control, not a HIPAA/BAA determination.
   Not a sandbox.
+
+Vendored from [rytswd/pi-agent-extensions](https://github.com/rytswd/pi-agent-extensions)
+(`98b926f`). Imports rewritten `@mariozechner/*` → `@earendil-works/*`.
+
+- `direnv/` — load allowed `.envrc` into `process.env`; reloads on direnv
+  watch-file changes. Requires `direnv` on PATH.
+- `permission-gate/` — `/gate` prompt/block for `rm -rf`, sudo, force-push,
+  whole-tree scans. Confirmation layer, not a sandbox. `PI_NO_GATE=1` disables.
+- `slow-mode/` — `/slow-mode` review gate for `write`/`edit` before disk.
+  Optional `difft` / `delta`.
+- `statusline/` — model, usage, context, VCS on one line. `/statusline`.
+  Config/cache in `~/.config/pi-statusline/`.
+- `stash/` — `Alt+S` session stash, `Alt+Shift+S` global stash.
+- `notify/` — desktop ping when Pi is waiting. `/notify`.
+- `inbox/` — `$PI_INBOX` unix socket so background jobs can wake the session.
+
+Vendored from [rytswd/pi-agent-extensions-extra](https://github.com/rytswd/pi-agent-extensions-extra)
+(`48cf021`):
+
+- `telegram-connect/` — `/telegram` bridge. Direct polling works without
+  extra deps. Multi-session topics need `pi-bridge` on PATH.
+
+Do not `pi install` those repos as packages: they enable every extension
+by default and would duplicate tools already in vendor/.
 
 Coming: model-roles, spawn cwd lock, cwd-scope, web-permission.
 
