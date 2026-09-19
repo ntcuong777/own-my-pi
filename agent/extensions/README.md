@@ -11,6 +11,8 @@ Tracked:
   (`PI_PERSONAL=1`) forces on for the process.
 - `plan-toggle.ts` — Alt+Shift+P toggles `/plan` and keeps the editor draft.
   Do not also set `toggleShortcut` in pi-plan-mode settings.
+- `skill-summon/` — typing `/` after prose or after `/skill:foo …` opens
+  the skill completion popup (Pi only auto-opens at prompt start).
 - `plan-review-feedback.ts` — `/plan-refine` sends plan-revision notes.
   pi-plan-mode has Stay/Implement/Export, not OMP's Refine overlay.
 - `redact-secrets.ts` — scrub secrets and PII from **local file/shell tool
