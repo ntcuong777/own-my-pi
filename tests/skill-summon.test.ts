@@ -4,6 +4,7 @@ import {
 	applyMidPromptSkillCompletion,
 	findTrailingSlashCommandStart,
 	isMidPromptSkillSlash,
+	leadingSlashToken,
 	wrapSkillSummonProvider,
 } from "../agent/extensions/skill-summon/provider";
 import type { SkillSummonItem, SkillSummonProvider } from "../agent/extensions/skill-summon/provider";
@@ -12,6 +13,7 @@ import { registerSkillSummon } from "../agent/extensions/skill-summon/register";
 const skills: SkillSummonItem[] = [
 	{ value: "skill:security-scan", label: "skill:security-scan", description: "Scan" },
 	{ value: "skill:reviewer", label: "skill:reviewer", description: "Review" },
+	{ value: "skill:writing-plans", label: "skill:writing-plans", description: "Plans" },
 ];
 const commands: SkillSummonItem[] = [
 	...skills,
@@ -86,6 +88,16 @@ describe("findTrailingSlashCommandStart", () => {
 	});
 });
 
+describe("leadingSlashToken", () => {
+	test("strips indent before a leading slash command", () => {
+		expect(leadingSlashToken("/writing-plans")).toBe("/writing-plans");
+		expect(leadingSlashToken(" /writing-plans")).toBe("/writing-plans");
+		expect(leadingSlashToken("\t/caveman")).toBe("/caveman");
+		expect(leadingSlashToken("/skill:caveman then /writing-plans")).toBe(null);
+		expect(leadingSlashToken("hello /w")).toBe(null);
+	});
+});
+
 describe("wrapSkillSummonProvider", () => {
 	const abort = { signal: new AbortController().signal };
 
@@ -97,6 +109,7 @@ describe("wrapSkillSummonProvider", () => {
 		expect(result?.items.map((item) => item.value)).toEqual([
 			"skill:security-scan",
 			"skill:reviewer",
+			"skill:writing-plans",
 		]);
 	});
 
@@ -108,6 +121,7 @@ describe("wrapSkillSummonProvider", () => {
 		expect(result?.items.map((item) => item.value)).toEqual([
 			"skill:security-scan",
 			"skill:reviewer",
+			"skill:writing-plans",
 		]);
 	});
 
@@ -116,6 +130,22 @@ describe("wrapSkillSummonProvider", () => {
 		const line = "/m";
 		const result = await provider.getSuggestions([line], 0, line.length, abort);
 		expect(result?.items.map((item) => item.value)).toEqual(["model"]);
+	});
+
+	test("completes an indented /writing-plans token", async () => {
+		const provider = wrapSkillSummonProvider(fakeInner(commands));
+		const line = " /writing-plans";
+		const result = await provider.getSuggestions([line], 0, line.length, abort);
+		expect(result?.prefix).toBe("/writing-plans");
+		expect(result?.items.map((item) => item.value)).toEqual(["skill:writing-plans"]);
+	});
+
+	test("completes /writing-plans after /caveman on the same line", async () => {
+		const provider = wrapSkillSummonProvider(fakeInner(commands));
+		const line = "/caveman /writing-plans";
+		const result = await provider.getSuggestions([line], 0, line.length, abort);
+		expect(result?.prefix).toBe("/writing-plans");
+		expect(result?.items.map((item) => item.value)).toEqual(["skill:writing-plans"]);
 	});
 
 	test("falls through to files when Tab forces completion", async () => {
@@ -148,8 +178,16 @@ describe("applyMidPromptSkillCompletion", () => {
 describe("patchEditorSlashTrigger", () => {
 	class FakeEditor {
 		text = "";
+		lines?: string[];
+		cursor?: { line: number; col: number };
 		triggered = 0;
 		insertCharacter(char: string) {
+			if (this.lines && this.cursor) {
+				const line = this.lines[this.cursor.line] ?? "";
+				this.lines[this.cursor.line] = line + char;
+				this.cursor.col = this.lines[this.cursor.line]!.length;
+				return;
+			}
 			this.text += char;
 		}
 		tryTriggerAutocomplete() {
@@ -159,9 +197,10 @@ describe("patchEditorSlashTrigger", () => {
 			return false;
 		}
 		getLines() {
-			return [this.text];
+			return this.lines ?? [this.text];
 		}
 		getCursor() {
+			if (this.cursor) return this.cursor;
 			return { line: 0, col: this.text.length };
 		}
 	}
@@ -181,6 +220,16 @@ describe("patchEditorSlashTrigger", () => {
 		editor.insertCharacter("/");
 		expect(editor.text).toBe("/");
 		expect(editor.triggered).toBe(0);
+	});
+
+	test("opens the popup for a leading slash on a later line", () => {
+		patchEditorSlashTrigger(FakeEditor);
+		const editor = new FakeEditor();
+		editor.lines = ["/skill:caveman", ""];
+		editor.cursor = { line: 1, col: 0 };
+		editor.insertCharacter("/");
+		expect(editor.lines[1]).toBe("/");
+		expect(editor.triggered).toBe(1);
 	});
 });
 describe("registerSkillSummon", () => {
@@ -220,6 +269,7 @@ describe("registerSkillSummon", () => {
 		expect(result?.items.map((item) => item.value)).toEqual([
 			"skill:security-scan",
 			"skill:reviewer",
+			"skill:writing-plans",
 		]);
 	});
 

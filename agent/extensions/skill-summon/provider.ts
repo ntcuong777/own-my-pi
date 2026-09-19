@@ -45,6 +45,17 @@ export function isMidPromptSkillSlash(textBeforeCursor: string): boolean {
 	return textBeforeCursor.slice(0, slashStart).trim() !== "";
 }
 
+/**
+ * Leading slash token, including indented ` /writing-plans`.
+ * Pi's CombinedAutocompleteProvider only matches `text.startsWith("/")`.
+ */
+export function leadingSlashToken(textBeforeCursor: string): string | null {
+	const slashStart = findTrailingSlashCommandStart(textBeforeCursor);
+	if (slashStart === null) return null;
+	if (textBeforeCursor.slice(0, slashStart).trim() !== "") return null;
+	return textBeforeCursor.slice(slashStart);
+}
+
 export function applyMidPromptSkillCompletion(
 	lines: string[],
 	cursorLine: number,
@@ -90,6 +101,10 @@ export function wrapSkillSummonProvider(current: SkillSummonProvider): SkillSumm
 							return { items, prefix: token };
 						}
 					}
+				}
+				const leading = leadingSlashToken(textBeforeCursor);
+				if (leading && leading !== textBeforeCursor) {
+					return current.getSuggestions([leading], 0, leading.length, options);
 				}
 			}
 			return current.getSuggestions(lines, cursorLine, cursorCol, options);

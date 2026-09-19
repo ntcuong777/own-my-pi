@@ -1,4 +1,4 @@
-import { isMidPromptSkillSlash } from "./provider";
+import { findTrailingSlashCommandStart, isMidPromptSkillSlash } from "./provider";
 
 export type SlashTriggerEditor = {
 	insertCharacter(char: string, skipUndoCoalescing?: boolean): void;
@@ -27,7 +27,11 @@ export function patchEditorSlashTrigger(editorCtor: SlashTriggerEditorCtor): boo
 		if (char !== "/" || this.isShowingAutocomplete()) return;
 		const cursor = this.getCursor();
 		const before = (this.getLines()[cursor.line] ?? "").slice(0, cursor.col);
-		if (isMidPromptSkillSlash(before)) {
+		// Line 0 leading `/` is Pi's job. Later lines and mid-prompt `/` are not.
+		if (
+			isMidPromptSkillSlash(before) ||
+			(cursor.line > 0 && findTrailingSlashCommandStart(before) !== null)
+		) {
 			this.tryTriggerAutocomplete();
 		}
 	};
