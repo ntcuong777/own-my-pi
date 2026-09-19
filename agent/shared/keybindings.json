@@ -1,0 +1,4 @@
+{
+  "tui.input.newLine": ["shift+enter", "ctrl+j", "alt+enter", "alt+return"],
+  "app.message.followUp": ["ctrl+alt+enter", "alt+shift+enter"]
+}

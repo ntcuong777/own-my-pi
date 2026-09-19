@@ -21,9 +21,16 @@ finishing-a-development-branch. settings.json lists ~/.agents/skills first
 (Pi's builtin default is ~/.pi/agent/skills, which this harness no longer
 installs). Host settings.json also adds ~/.claude/skills and ~/.codex/skills.
 
+## Keybindings
+
+`~/.pi/agent/keybindings.json` is live-linked from `agent/shared/keybindings.json`.
+Alt+Enter / M-RET inserts a newline (`tui.input.newLine`), matching Emacs.
+Follow-up is `Ctrl+Alt+Enter` or `Alt+Shift+Enter`. Run `/reload` after
+edits. Shift+Enter and Ctrl+J still insert a newline.
+
 ## Live edit
 
-Home Manager points ~/.pi/agent/{settings,extensions,agents,vendor} and
+Home Manager points ~/.pi/agent/{settings,extensions,agents,vendor,keybindings.json} and
 ~/.agents/skills/<name> at this checkout via mkOutOfStoreSymlink. Edit
 JSON, skills, custom extensions, or vendor/src and the next Pi start
 sees it. No NixOS / nix-darwin rebuild.
