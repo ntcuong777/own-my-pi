@@ -152,6 +152,15 @@ describe("permission-gate overlay", () => {
 		const cmd = `python3 << 'PY'\nfrom pathlib import Path\nPath("argv.ts").write_text("x")\nPY`;
 		expect(overlayLabels(cmd)).toContain("shell file rewrite");
 	});
+
+	test("python heredoc open read-replace-write is a prompted rewrite", () => {
+		const cmd = "cd /tmp && python3 - <<'PYEOF'\ns=open(\"harness.rs\").read()\ns=s.replace(old,new)\nopen(\"harness.rs\",\"w\").write(s)\nPYEOF";
+		expect(overlayLabels(cmd)).toContain("shell file rewrite");
+	});
+
+	test("python open().read of a path starting with w is not a rewrite", () => {
+		expect(overlayLabels(`python3 -c 'print(open("write.py").read())'`)).not.toContain("shell file rewrite");
+	});
 });
 
 describe("permission-gate obscured scripts", () => {
