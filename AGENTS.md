@@ -63,7 +63,11 @@ answer a reminder fires; 5 minutes after that the prompt auto-rejects.
 Both delays and the timeout default (reject vs allow) are configurable
 in the overlay `prompt` block. If `edit` fails, re-read the file and
 retry with fresh `LINE#HASH` anchors. `replace_text` is disabled
-(`replaceText: false` in hashline.json).
+(`replaceText: false` in hashline.json). To find edit sites, use the
+hashline `grep` tool (not shell `rg`/`grep`): matches come back as
+`LINE#HASH:content` and can go straight into `edit`. Piped filters
+(`cargo test | grep FAILED`) are fine. In Cursor, that tool is
+`mcp_pi-agent_grep` when Pi builtins are hidden.
 
 Cursor models inside Pi (`pi-cursor-sdk`) keep Cursor's own Read / Shell /
 Write / StrReplace host tools. Pi's overlapping builtins (`read`, `bash`,

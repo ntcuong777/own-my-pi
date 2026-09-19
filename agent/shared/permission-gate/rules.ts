@@ -4,8 +4,10 @@
  * Built-in rules already cover rm -rf, sudo, force-push, whole-tree scans,
  * ssh remote commands, interpreter -c, crontab, env command injection,
  * PI_NO_GATE persistence, python/sed/perl/cat/tee file rewrites (hard
- * block, not appealable), and the documented syntax-gate gaps that argv
- * can actually see. This file adds harness-specific extras.
+ * block, not appealable), shell rg/grep file searches (use hashline
+ * `grep` for LINE#HASH edit anchors; piped filters stay allowed), and
+ * the documented syntax-gate gaps that argv can actually see. This file
+ * adds harness-specific extras.
  *
  * Loaded from ~/.config/pi-agent-extensions/permission-gate/rules.ts
  * (live-linked by Home Manager). `/gate add` still writes rules.json
@@ -34,6 +36,21 @@ export default function (helpers: {
 			onTimeout: "reject",
 		},
 		extraRules: [
+			{
+				label: "shell rg/grep",
+				group: "scan",
+				reason:
+					"Use the hashline `grep` tool, not shell rg/grep. Hashline grep returns `LINE#HASH:content` anchors you can pass straight to `edit`. Shell rg/grep is not hashed — copying line numbers from it into `edit` will miss or go stale.",
+				appealHint:
+					"Acceptable: filtering command output (already allowed for `| grep`), `rg --files`, or flags hashline grep cannot express (`--json`, `--replace`, `--pre`, remote host). Not acceptable: finding code to edit.",
+				test: (p: string[][]) => {
+					const head = p[0];
+					if (!head) return false;
+					return anyCmd([head], ["rg", "grep"], (a) =>
+						!a.includes("--files") && !a.includes("--files-without-match"),
+					);
+				},
+			},
 			{
 				label: "docker prune",
 				group: "files",

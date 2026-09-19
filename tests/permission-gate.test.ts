@@ -189,6 +189,23 @@ describe("permission-gate overlay", () => {
 		expect(overlayLabels("cargo test 2>&1 | tee /tmp/out.log")).not.toContain("shell file rewrite");
 	});
 
+	test("shell rg/grep file search is guided to hashline grep", () => {
+		expect(overlayLabels("rg foo src")).toContain("shell rg/grep");
+		expect(overlayLabels("rg foo")).toContain("shell rg/grep");
+		expect(overlayLabels("grep -n foo src/main.rs")).toContain("shell rg/grep");
+		expect(overlayLabels("cd /tmp && rg pattern .")).toContain("shell rg/grep");
+	});
+
+	test("piped grep of command output is not shell rg/grep", () => {
+		expect(overlayLabels('cargo test -- --nocapture 2>&1 | grep PROBE')).not.toContain("shell rg/grep");
+		expect(overlayLabels('devenv shell -- cargo test --test tui_smoke completion_submit 2>&1 | grep -E "test result|FAILED" | head -3')).not.toContain("shell rg/grep");
+	});
+
+	test("rg --files is not shell rg/grep", () => {
+		expect(overlayLabels("rg --files src")).not.toContain("shell rg/grep");
+		expect(overlayLabels("rg --files-without-match foo src")).not.toContain("shell rg/grep");
+	});
+
 	test("combined cat heredoc plus python patch is a rewrite", () => {
 		const cmd = "cd /tmp && mkdir -p /tmp/rblc && cat > tests/tui_smoke/probe.rs <<'EOF'\nfn dump() { if n > 0 { 1 } else { 0 } }\nEOF\npython3 - <<'PYEOF'\ns=open(\"tests/tui_smoke/main.rs\").read()\nopen(\"tests/tui_smoke/main.rs\",\"w\").write(s)\nPYEOF\ndevenv shell -- cargo test -- --nocapture 2>&1 | grep PROBE";
 		expect(overlayLabels(cmd)).toContain("shell file rewrite");
