@@ -6,12 +6,14 @@ import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 /**
- * Scrub secrets from tool output and from the LLM context copy using
- * redactum (https://github.com/alexwhin/redactum). Pi still opens the file
- * locally; the model and the persisted tool result see placeholders instead.
+ * Scrub secrets and PII from local file/shell tool output using redactum's
+ * built-in default policy set (https://github.com/alexwhin/redactum).
+ * No custom `policies` / `categories` override: that is the library config.
  *
- * Secret categories only. Full PII (emails, IPs, phones) would mangle git
- * logs and source. This is not a sandbox.
+ * Pi still opens the file locally; the model and the persisted tool result
+ * see placeholders instead. Skills (`cursor_activate_skill`, SKILL.md) are
+ * not redacted — they are instructions, not machine data. Disk is never
+ * rewritten. This is a regex technical control, not a HIPAA/BAA determination.
  */
 
 type RedactumFinding = {
@@ -25,24 +27,29 @@ type RedactumFn = (
 	text: string,
 	options?: {
 		replacement?: string;
-		categories?: Record<string, boolean>;
+		policies?: readonly string[];
 	},
 ) => { redactedText: string; findings?: RedactumFinding[] } | string;
 
-const SECRET_CATEGORIES: Record<string, boolean> = {
-	EMAIL: false,
-	PHONE: false,
-	SSN: false,
-	CREDIT_CARD: false,
-	IP_ADDRESS: false,
-	ADDRESS: false,
-	MEDICAL: false,
-	API_KEY: true,
-	AWS_KEY: true,
-	PRIVATE_KEY: true,
-	DATABASE_CREDENTIALS: true,
-	DEV_SECRET: true,
-};
+/** Local inspection tools whose results are copies of machine files or dumps. */
+export const FILE_TOOLS = new Set([
+	"read",
+	"grep",
+	"find",
+	"ls",
+	"bash",
+	"powershell",
+	"edit",
+	"write",
+]);
+
+const CONTEXT_SKIP_KEYS = new Set([
+	"thinkingSignature",
+	"textSignature",
+	"encrypted_content",
+	"responseId",
+	"signature",
+]);
 
 function vendorPackageJson(): string {
 	const here = dirname(fileURLToPath(import.meta.url));
@@ -79,6 +86,31 @@ const CATEGORY_ABBREV: Record<string, string> = {
 	PRIVATE_KEY: "pk",
 	DATABASE_CREDENTIALS: "db",
 	DEV_SECRET: "ds",
+	EMAIL: "email",
+	PHONE: "ph",
+	SSN: "ssn",
+	IP_ADDRESS: "ip",
+	ADDRESS: "addr",
+	GOVERNMENT_ID: "gov",
+	TAX_IDENTIFIER: "tax",
+	INSURANCE: "ins",
+	FINANCIAL: "fin",
+	MEDICAL: "med",
+	DIGITAL_IDENTITY: "did",
+	GEOGRAPHIC: "geo",
+	EMPLOYEE_ID: "emp",
+	VEHICLE: "veh",
+	DEV_IDENTIFIER: "devid",
+	CLOUD_CREDENTIALS: "cloud",
+	CI_CD_SECRETS: "cicd",
+	PACKAGE_REGISTRY: "pkg",
+	MONITORING_SECRETS: "mon",
+	AUTH_SECRETS: "auth",
+	MESSAGING_SECRETS: "msg",
+	WEBHOOK_URLS: "wh",
+	ENCRYPTION_KEYS: "enc",
+	CONTAINER_REGISTRY: "cr",
+	INFRASTRUCTURE_SECRETS: "infra",
 };
 
 export const PLACEHOLDER_RE = /<redacted:([a-z]+)(\d+)>/g;
@@ -125,9 +157,43 @@ export function containsPlaceholder(value: string): boolean {
 	return PLACEHOLDER_RE.test(value);
 }
 
+function posixPath(value: string): string {
+	return value.replace(/\\/g, "/");
+}
+
+/** Skill catalogs and SKILL.md trees — instructions, not machine PHI. */
+export function isSkillPath(path: unknown): boolean {
+	if (typeof path !== "string" || path.length === 0) return false;
+	const n = posixPath(path);
+	if (/(^|\/)SKILL\.md$/i.test(n)) return true;
+	return /(^|\/)(\.agents|\.claude|\.codex)\/skills\//.test(n) || /(^|\/)\.pi\/agent\/skills\//.test(n);
+}
+
+export function isSkillTool(toolName: string): boolean {
+	return toolName === "cursor_activate_skill" || /skill/i.test(toolName);
+}
+
+function toolPath(input: Record<string, unknown> | undefined): unknown {
+	if (!input) return undefined;
+	return input.path ?? input.file_path ?? input.target_directory ?? input.filePath;
+}
+
+/** Redact copies of local files/dumps. Never skills, never remote/MCP tools. */
+export function shouldRedactToolResult(event: {
+	toolName: string;
+	input?: Record<string, unknown>;
+}): boolean {
+	if (isSkillTool(event.toolName)) return false;
+	if (!FILE_TOOLS.has(event.toolName)) return false;
+	if (isSkillPath(toolPath(event.input))) return false;
+	return true;
+}
+
 export function redactText(input: string): { text: string; hits: number } {
 	if (!redactum) return { text: input, hits: 0 };
-	const result = redactum(input, { categories: SECRET_CATEGORIES });
+	// Library defaults: every built-in secret + PII policy. Do not pass a
+	// `categories` map (ignored) or a custom `policies` whitelist.
+	const result = redactum(input);
 	if (typeof result === "string") {
 		// No findings metadata: fall back to the opaque single-token form.
 		return { text: result, hits: result === input ? 0 : 1 };
@@ -197,20 +263,27 @@ export function restorePlaceholders(value: unknown): {
 	return { value: walk(value), restored, unresolved };
 }
 
-function redactAny(value: unknown, hit: { n: number }): unknown {
+function redactAny(value: unknown, hit: { n: number }, skipKeys?: ReadonlySet<string>): unknown {
 	if (typeof value === "string") {
 		const out = redactText(value);
 		hit.n += out.hits;
 		return out.text;
 	}
-	if (Array.isArray(value)) return value.map((v) => redactAny(v, hit));
+	if (Array.isArray(value)) return value.map((v) => redactAny(v, hit, skipKeys));
 	if (value && typeof value === "object") {
 		const src = value as Record<string, unknown>;
 		const dst: Record<string, unknown> = {};
-		for (const [k, v] of Object.entries(src)) dst[k] = redactAny(v, hit);
+		for (const [k, v] of Object.entries(src)) {
+			dst[k] = skipKeys?.has(k) ? v : redactAny(v, hit, skipKeys);
+		}
 		return dst;
 	}
 	return value;
+}
+
+/** LLM context copy: redact text, but never provider-private reasoning blobs. */
+export function redactContext(value: unknown, hit: { n: number }): unknown {
+	return redactAny(value, hit, CONTEXT_SKIP_KEYS);
 }
 
 export default function (pi: ExtensionAPI) {
@@ -247,6 +320,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_result", async (event) => {
+		if (!shouldRedactToolResult(event)) return;
 		const hit = { n: 0 };
 		const content = redactAny(event.content, hit);
 		const details = event.details === undefined ? undefined : redactAny(event.details, hit);
@@ -255,13 +329,5 @@ export default function (pi: ExtensionAPI) {
 			content,
 			...(details === undefined ? {} : { details }),
 		};
-	});
-
-	pi.on("context", async (event, ctx) => {
-		const hit = { n: 0 };
-		const messages = redactAny(event.messages, hit) as typeof event.messages;
-		if (hit.n === 0) return;
-		ctx.ui.setStatus("redact-secrets", `redacted ${hit.n}`);
-		return { messages };
 	});
 }

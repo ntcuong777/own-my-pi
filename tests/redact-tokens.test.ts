@@ -5,8 +5,11 @@ import {
 	containsPlaceholder,
 	lookupSecret,
 	mintToken,
+	redactContext,
+	redactText,
 	resetRedactionRegistry,
 	restorePlaceholders,
+	shouldRedactToolResult,
 } from "../agent/extensions/redact-secrets";
 
 beforeEach(() => {
@@ -118,4 +121,100 @@ test("redactum resolves from vendor/", () => {
 	const mod = req("redactum") as { redactum?: unknown } | ((...args: unknown[]) => unknown);
 	const fn = typeof mod === "function" ? mod : mod?.redactum;
 	expect(typeof fn).toBe("function");
+});
+
+describe("redactText", () => {
+	test("uses redactum defaults for PII as well as secrets", () => {
+		const email = "jane.doe@hospital.org";
+		const ssn = "123-45-6789";
+		const out = redactText(`Contact ${email} SSN ${ssn}`);
+		expect(out.hits).toBeGreaterThanOrEqual(2);
+		expect(out.text).not.toContain(email);
+		expect(out.text).not.toContain(ssn);
+		expect(out.text).toMatch(/<redacted:email\d+>/);
+		expect(out.text).toMatch(/<redacted:ssn\d+>/);
+	});
+
+	test("redacts a medical record number", () => {
+		const out = redactText("MRN: 1234567");
+		expect(out.hits).toBeGreaterThanOrEqual(1);
+		expect(out.text).not.toContain("MRN: 1234567");
+		expect(out.text).toMatch(/<redacted:med\d+>/);
+	});
+
+	test("still redacts a named Stripe live key", () => {
+		// Mock key for testing redactor
+		const key = "sk_live_4eC32HwLxjWDaritT2zdp7dc";
+		const out = redactText(`token=${key}`);
+		expect(out.hits).toBe(1);
+		expect(out.text).not.toContain(key);
+		expect(out.text).toMatch(/<redacted:ak\d+>/);
+	});
+});
+
+describe("shouldRedactToolResult", () => {
+	test("skips Cursor skill activation", () => {
+		expect(
+			shouldRedactToolResult({
+				toolName: "cursor_activate_skill",
+				input: { name: "using-superpowers" },
+			}),
+		).toBe(false);
+	});
+
+	test("skips a SKILL.md read even though read is a file tool", () => {
+		expect(
+			shouldRedactToolResult({
+				toolName: "read",
+				input: { path: "/home/ntcuong777/.pi/agent/skills/using-superpowers/SKILL.md" },
+			}),
+		).toBe(false);
+	});
+
+	test("redacts a local patient file read", () => {
+		expect(
+			shouldRedactToolResult({
+				toolName: "read",
+				input: { path: "/var/data/patients/chart.txt" },
+			}),
+		).toBe(true);
+	});
+
+	test("does not redact MCP or web tools", () => {
+		expect(shouldRedactToolResult({ toolName: "web_fetch", input: { url: "https://example.com" } })).toBe(
+			false,
+		);
+	});
+});
+
+describe("redactContext", () => {
+	test("does not rewrite thinkingSignature even if the blob looks secret-like", () => {
+		// AWS_SECRET_KEY is a 40-char base64 run. Codex encrypted_content is
+		// the same shape, so redactText would hit it; the context hook must
+		// still pass the signature through or Codex replay fails.
+		const enc = `gAAAAAB${"A".repeat(40)}-${"b".repeat(40)}_${"C".repeat(40)}`;
+		const signature = JSON.stringify({
+			id: "rs_test",
+			type: "reasoning",
+			encrypted_content: enc,
+		});
+		const messages = [
+			{
+				role: "assistant",
+				content: [
+					{
+						type: "thinking",
+						thinking: "plan",
+						thinkingSignature: signature,
+					},
+				],
+			},
+		];
+		const hit = { n: 0 };
+		const out = redactContext(messages, hit);
+		expect(hit.n).toBe(0);
+		expect(out).toEqual(messages);
+		const block = (out as typeof messages)[0].content[0];
+		expect(block.thinkingSignature).toBe(signature);
+	});
 });
