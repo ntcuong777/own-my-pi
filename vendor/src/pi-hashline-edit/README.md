@@ -83,10 +83,12 @@ Edits use `LINE#HASH` anchors to target lines precisely. All edits in a single c
 
 Ripgrep-backed search returning `LINE#HASH:content` anchors in the same format as `read` output. These anchors can be passed directly into `edit`, closing the grep-to-edit loop without a separate round-trip.
 
-- Pattern is regex by default; set `literal: true` for fixed-string search.
-- Results respect `.gitignore`. Use `path` to scope and `glob` to filter by filename pattern.
-- Set `context` (0–5) for surrounding lines; `limit` to cap matches (default 50, max 200).
-- **Off by default.** Registered only when enabled in config (`"grep": true`) *and* `rg` is found on `PATH`.
+- `pattern` is regex by default; set `literal: true` for fixed-string search. Use `path` to scope searches.
+- `glob` accepts a string or array of filename filters; `type` selects a ripgrep file type.
+- `hidden: true` includes hidden files (off by default). `noIgnore: true` bypasses ignores only for an explicit ignored path the user named; never use it to dump `node_modules`. Otherwise results respect `.gitignore`.
+- `ignoreCase: true` enables case-insensitive matching. Set `context` from 0–5 for symmetric surrounding lines.
+- `limit` defaults to 50 and accepts 1–100. Use `cursor` for pagination: when more matches remain, retry with the same arguments plus the returned cursor unchanged; narrow `path`, `glob`, or `pattern` instead of raising `limit` to get everything.
+- **Opt-in.** Registered only when enabled in `hashline.json` (`"grep": true`) *and* `rg` is found on `PATH`; this harness already enables it.
 
 ### Chained edits
 

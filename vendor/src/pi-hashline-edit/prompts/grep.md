@@ -1,7 +1,5 @@
 Search files using ripgrep. Every matched line returns as `LINE#HASH:content` — copy those anchors verbatim into `edit` without a prior `read`.
 
-The `pattern` is a regular expression unless `literal: true`. Results respect `.gitignore` by default (ripgrep's default). Use `path` to scope to a file or directory; use `glob` to filter by filename pattern (e.g. `"**/*.ts"`).
+`pattern` is a regular expression unless `literal: true`, which selects fixed-string matching. Use `path` to scope to a file or directory. Use `glob` as a filename filter, either one string or an array of strings; empty entries are ignored. Set `type` to a ripgrep file type, `hidden: true` to include hidden files (off by default), `ignoreCase: true` for case-insensitive matching, and `noIgnore: true` only when searching an explicit ignored path the user named — never use it to dump `node_modules`. Results respect `.gitignore` unless `noIgnore` is enabled.
 
-Set `context` (0–5) to include surrounding lines around each match. Set `limit` to cap matched lines (default 50, max 200).
-
-When results are too broad, narrow in this order: read the match count first, then scope with `path`/`glob`, then tighten `pattern`, and only add `context` once the set is small.
+Set `context` from 0–5 for symmetric surrounding lines. Set `limit` from 1–100 to cap matched lines (default 50). Results paginate with an opaque `cursor`: when more matches remain, retry with the same arguments plus the returned `cursor` unchanged. Do not raise `limit` to get everything; narrow `path`, `glob`, or `pattern` first.

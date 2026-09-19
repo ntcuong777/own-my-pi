@@ -42,7 +42,7 @@ export default function (helpers: {
 				reason:
 					"Use the hashline `grep` tool, not shell rg/grep. Hashline grep returns `LINE#HASH:content` anchors you can pass straight to `edit`. Shell rg/grep is not hashed — copying line numbers from it into `edit` will miss or go stale.",
 				appealHint:
-					"Acceptable: filtering command output (already allowed for `| grep`), `rg --files`, or flags hashline grep cannot express (`--json`, `--replace`, `--pre`, remote host). Not acceptable: finding code to edit.",
+					"Acceptable: filtering command output (already allowed for `| grep`), `rg --files`, or features hashline grep cannot express (`--replace`, `--pre`, `--json` output, remote host, zip, follow, or stdin). Hashline grep now covers hidden files, type filters, multiple globs, no-ignore searches, and pagination. Not acceptable: using shell rg/grep to find code to edit.",
 				test: (p: string[][]) => {
 					const head = p[0];
 					if (!head) return false;

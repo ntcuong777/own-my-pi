@@ -19,7 +19,7 @@ const GREP_PROMPT_SNIPPET = loadPrompt(
 ).trim();
 
 const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 200;
+const MAX_LIMIT = 100;
 const STDERR_MAX_BYTES = 64 * 1024;
 
 // Exported so tests can inspect or stub the binary name without vi.mock("child_process").
@@ -77,7 +77,14 @@ function mergeRange(ranges: LineRange[], range: LineRange): void {
 interface RgSearchResult {
 	matchesByFile: Map<string, number[]>;
 	matches: number;
-	truncated: boolean;
+	hasMore: boolean;
+	lastMatch: { file: string; line: number } | undefined;
+}
+
+interface CursorPayload {
+	v: 1;
+	q: string;
+	after: { file: string; line: number };
 }
 
 function addMatch(
@@ -119,16 +126,13 @@ function appendLimitedStderr(current: string, chunk: string): string {
 }
 
 /**
- * Run rg asynchronously, returning at most `limit` match events. Honors
- * AbortSignal by killing the child process. The limit is process-level: we only
- * mark truncated after seeing match number limit + 1, then kill rg and resolve
- * with the first `limit` matches.
- *
- * rg exit codes: 0 = matches found, 1 = no matches, 2 = error.
+ * Run rg asynchronously, returning at most `limit` match events plus one
+ * extra event to determine whether another page exists.
  */
 function runRg(
 	args: string[],
 	limit: number,
+	after: { file: string; line: number } | undefined,
 	signal: AbortSignal | undefined,
 ): Promise<RgSearchResult> {
 	return new Promise((resolve, reject) => {
@@ -141,22 +145,19 @@ function runRg(
 		const rl = createInterface({ input: child.stdout });
 		const matchesByFile = new Map<string, number[]>();
 		let totalMatched = 0;
-		let truncated = false;
+		let hasMore = false;
+		let lastMatch: { file: string; line: number } | undefined;
 		let stoppedByLimit = false;
 		let settled = false;
 		let stderr = "";
 
-		const cleanup = () => {
-			signal?.removeEventListener("abort", onAbort);
-		};
-
+		const cleanup = () => signal?.removeEventListener("abort", onAbort);
 		const settleResolve = () => {
 			if (settled) return;
 			settled = true;
 			cleanup();
-			resolve({ matchesByFile, matches: totalMatched, truncated });
+			resolve({ matchesByFile, matches: totalMatched, hasMore, lastMatch });
 		};
-
 		const settleReject = (error: Error) => {
 			if (settled) return;
 			settled = true;
@@ -164,51 +165,47 @@ function runRg(
 			rl.close();
 			reject(error);
 		};
-
 		const stopForLimit = () => {
 			if (stoppedByLimit) return;
-			truncated = true;
+			hasMore = true;
 			stoppedByLimit = true;
 			cleanup();
 			rl.close();
 			child.kill();
 		};
 
-		// setEncoding lets Node's stream decoder handle multi-byte UTF-8 sequences
-		// that span chunk boundaries correctly — spawn's options.encoding is an exec
-		// parameter and has no effect here, so we set encoding on the streams directly.
 		child.stdout.setEncoding("utf-8");
 		child.stderr.setEncoding("utf-8");
-
 		rl.on("line", (line: string) => {
 			if (settled || stoppedByLimit) return;
 			const match = parseMatchLine(line);
 			if (!match) return;
-
+			if (
+				after &&
+				(match.filePath < after.file ||
+					(match.filePath === after.file && match.lineNum <= after.line))
+			) {
+				return;
+			}
 			if (totalMatched >= limit) {
 				stopForLimit();
 				return;
 			}
-
 			addMatch(matchesByFile, match.filePath, match.lineNum);
 			totalMatched++;
+			lastMatch = { file: match.filePath, line: match.lineNum };
 		});
-
 		child.stderr.on("data", (chunk: string) => {
 			stderr = appendLimitedStderr(stderr, chunk);
 		});
-
 		const onAbort = () => {
 			child.kill();
 			settleReject(new Error("Aborted"));
 		};
 		signal?.addEventListener("abort", onAbort, { once: true });
-
 		child.on("error", (err: Error) => {
-			if (stoppedByLimit) return;
-			settleReject(new Error(`ripgrep spawn error: ${err.message}`));
+			if (!stoppedByLimit) settleReject(new Error(`ripgrep spawn error: ${err.message}`));
 		});
-
 		child.on("close", (code: number | null) => {
 			if (settled) return;
 			if (stoppedByLimit) {
@@ -219,20 +216,45 @@ function runRg(
 				settleReject(new Error("Aborted"));
 				return;
 			}
-			// code === null means the process was killed (signal) or spawn failed
 			if (code === null) {
 				settleReject(new Error("ripgrep process terminated unexpectedly"));
 				return;
 			}
-			// rg exits 2 for actual errors (invalid regex, unreadable path, etc.)
 			if (code === 2) {
 				settleReject(new Error(`ripgrep error: ${stderr.trim() || "unknown error"}`));
 				return;
 			}
-			// code 0 (matches) and 1 (no matches) are both success from our perspective
 			settleResolve();
 		});
 	});
+}
+
+function normalizeGlobs(glob: string | string[] | undefined): string[] {
+	return [...new Set((Array.isArray(glob) ? glob : glob ? [glob] : []).filter(Boolean))].sort();
+}
+
+function encodeCursor(payload: CursorPayload): string {
+	return `hlg1.${Buffer.from(JSON.stringify(payload), "utf8").toString("base64url")}`;
+}
+
+function decodeCursor(cursor: string): CursorPayload {
+	try {
+		if (!cursor.startsWith("hlg1.")) throw new Error();
+		const payload = JSON.parse(Buffer.from(cursor.slice(5), "base64url").toString("utf8")) as CursorPayload;
+		if (
+			payload.v !== 1 ||
+			typeof payload.q !== "string" ||
+			!payload.after ||
+			typeof payload.after.file !== "string" ||
+			!Number.isInteger(payload.after.line) ||
+			payload.after.line < 1
+		) {
+			throw new Error();
+		}
+		return payload;
+	} catch {
+		throw new Error("[E_GREP_CURSOR] invalid cursor. Omit cursor and start over.");
+	}
 }
 
 export function registerGrepTool(pi: ExtensionAPI): void {
@@ -255,10 +277,15 @@ export function registerGrepTool(pi: ExtensionAPI): void {
 				}),
 			),
 			glob: Type.Optional(
-				Type.String({
-					description: 'Filename glob filter, e.g. "**/*.ts"',
-				}),
+				Type.Union([
+					Type.String({ description: 'Filename glob filter, e.g. "**/*.ts"' }),
+					Type.Array(Type.String()),
+				]),
 			),
+			type: Type.Optional(Type.String({ description: "File type filter" })),
+			hidden: Type.Optional(Type.Boolean({ description: "Search hidden files" })),
+			noIgnore: Type.Optional(Type.Boolean({ description: "Do not respect ignore files" })),
+			cursor: Type.Optional(Type.String({ description: "Opaque pagination cursor" })),
 			ignoreCase: Type.Optional(
 				Type.Boolean({
 					description: "Case-insensitive matching",
@@ -293,32 +320,48 @@ export function registerGrepTool(pi: ExtensionAPI): void {
 			text.setText(label);
 			return text;
 		},
-
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 			throwIfAborted(signal);
-
 			const searchPath = params.path
 				? resolveToCwd(params.path, ctx.cwd)
 				: ctx.cwd;
+			const globs = normalizeGlobs(params.glob);
+			const fingerprint = JSON.stringify({
+				pattern: params.pattern,
+				searchPath,
+				glob: globs,
+				type: params.type ?? "",
+				hidden: params.hidden ?? false,
+				noIgnore: params.noIgnore ?? false,
+				ignoreCase: params.ignoreCase ?? false,
+				literal: params.literal ?? false,
+			});
+			let after: { file: string; line: number } | undefined;
+			if (params.cursor !== undefined) {
+				const payload = decodeCursor(params.cursor);
+				if (payload.q !== fingerprint) {
+					throw new Error("[E_GREP_CURSOR] cursor is for a different search. Omit cursor and start over.");
+				}
+				after = payload.after;
+			}
 
 			const limit = params.limit ?? DEFAULT_LIMIT;
 			const contextLines = params.context ?? 0;
-
-			// Build rg args
-			const rgArgs: string[] = ["--json"];
+			const rgArgs: string[] = ["--json", "--sort", "path"];
+			if (params.hidden) rgArgs.push("--hidden");
+			if (params.noIgnore) rgArgs.push("--no-ignore");
+			if (params.type) rgArgs.push("--type", params.type);
 			if (params.ignoreCase) rgArgs.push("--ignore-case");
 			if (params.literal) rgArgs.push("--fixed-strings");
-			if (params.glob) rgArgs.push("--glob", params.glob);
+			for (const glob of globs) rgArgs.push("--glob", glob);
 			rgArgs.push("--", params.pattern, searchPath);
 
-			// Async spawn: does not block the event loop; honors AbortSignal.
-			// runRg throws on process-level failures — never silently returns empty.
-			const { matchesByFile, matches: totalMatched, truncated } = await runRg(
+			const { matchesByFile, matches: totalMatched, hasMore, lastMatch } = await runRg(
 				rgArgs,
 				limit,
+				after,
 				signal,
 			);
-
 			throwIfAborted(signal);
 
 			if (totalMatched === 0) {
@@ -333,6 +376,7 @@ export function registerGrepTool(pi: ExtensionAPI): void {
 						matches: 0,
 						files: 0,
 						truncated: false,
+						hasMore: false,
 					},
 				};
 			}
@@ -409,7 +453,10 @@ export function registerGrepTool(pi: ExtensionAPI): void {
 				outputParts.push("---");
 			}
 
-			const summary = `${totalMatched} match${totalMatched !== 1 ? "es" : ""} in ${fileCount} file${fileCount !== 1 ? "s" : ""}.${truncated ? ` (truncated at ${limit})` : ""}`;
+			const nextCursor = hasMore && lastMatch
+				? encodeCursor({ v: 1, q: fingerprint, after: lastMatch })
+				: undefined;
+			const summary = `${totalMatched} match${totalMatched !== 1 ? "es" : ""} in ${fileCount} file${fileCount !== 1 ? "s" : ""}.${hasMore ? ` More remain — retry with the same arguments plus cursor: ${nextCursor}` : ""}`;
 			outputParts.push(summary);
 
 			return {
@@ -422,7 +469,9 @@ export function registerGrepTool(pi: ExtensionAPI): void {
 				details: {
 					matches: totalMatched,
 					files: fileCount,
-					truncated,
+					truncated: hasMore,
+					hasMore,
+					...(nextCursor ? { cursor: nextCursor } : {}),
 				},
 			};
 		},
