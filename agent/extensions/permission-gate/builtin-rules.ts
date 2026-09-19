@@ -691,6 +691,15 @@ const isNixSubcommand = (p: ArgvPipeline, a: string, b: string) =>
 
 export const DEFAULT_BLOCK_RULES: RuleEntry[] = [
 	{
+		label: "shell file rewrite",
+		group: "files",
+		action: "block",
+		appealable: false,
+		matchOutputWrites: true,
+		pattern: "\\bsed\\s+-[a-zA-Z]*i|\\bperl\\s+-pi|\\bruby\\s+-i|write_text\\s*\\(|fileinput\\.input\\s*\\(|Path\\([^)]+\\)\\.write(?:_text|_bytes)?\\(|\\.write_text\\(|\\.write_bytes\\(|open\\([^)]*,\\s*(?:mode\\s*=\\s*)?[\"'][waxr+]|writeFile(?:Sync)?\\s*\\(|writeTextFile(?:Sync)?\\s*\\(|Bun\\.write\\s*\\(|outputFileSync\\s*\\(",
+		reason: "Blocked: edit files with the hashline `edit` tool, not python/node/bun/sed/perl in-place rewrites or cat/tee/redirect writes. Re-read and retry the edit if it failed.",
+	},
+	{
 		label: "persist PI_NO_GATE",
 		group: "guard",
 		action: "block",

@@ -99,6 +99,12 @@ describe("permission-gate defaults", () => {
 	test("write to gate config still matches", () => {
 		expect(labels("cat > ~/.config/pi-agent-extensions/permission-gate/rules.json")).toContain("modify gate config");
 	});
+
+	test("python heredoc open write is a blocked rewrite without overlay", () => {
+		const cmd = "cd /home/ntcuong777/projects/em-rs && python3 - <<'PYEOF'\n p=\".superpowers/sdd/2026-09-19-minibuffer-selection-fixes/progress.md\"\n s=open(p).read()\n if \"Task 3:\" not in s:\n     s += \"Task 3: complete\\n\"\n open(p,\"w\").write(s)\n print(\"ledger updated\")\n PYEOF";
+		expect(labels(cmd)).toContain("shell file rewrite");
+		expect(matchRules(cmd, rules).some((r) => r.label === "shell file rewrite" && r.action === "block")).toBe(true);
+	});
 });
 
 const overlayRules = compileRules({
@@ -123,11 +129,10 @@ function withScript(name: string, body: string, fn: (script: string, dir: string
 }
 
 describe("permission-gate overlay", () => {
-	test("python write_text is a prompted shell file rewrite", () => {
+	test("python write_text is a blocked shell file rewrite", () => {
 		const cmd = `python3 -c 'from pathlib import Path; Path("x.ts").write_text("hi")'`;
 		expect(overlayLabels(cmd)).toContain("shell file rewrite");
-		expect(matchRules(cmd, overlayRules).some((r) => r.label === "shell file rewrite" && r.action === "prompt")).toBe(true);
-		expect(matchRules(cmd, overlayRules).some((r) => r.label === "shell file rewrite" && r.action === "block")).toBe(false);
+		expect(matchRules(cmd, overlayRules).some((r) => r.label === "shell file rewrite" && r.action === "block")).toBe(true);
 	});
 
 	test("sed -i is a prompted shell file rewrite", () => {
@@ -352,8 +357,6 @@ describe("permission-gate prompt policy", () => {
 	});
 
 	test("reject reasons come from the rule and custom text is formatted", () => {
-		const rewrite = overlayRules.find((r) => r.label === "shell file rewrite")!;
-		expect(rejectReasonChoices([rewrite])).toContain("Use the hashline edit tool instead of a script");
 		expect(rejectReasonChoices([])).toEqual([
 			"Too dangerous for this session",
 			"Use a narrower or different command",
@@ -423,6 +426,16 @@ describe("permission-gate appeals", () => {
 	test("protected rules cannot be appealed even with a rationale", () => {
 		const cmd = `# pi-gate-goal: ${good.goal}\n# pi-gate-rationale: ${good.rationale}\nexport PI_NO_GATE=1`;
 		const decision = decideGate(cmd, [persist], {});
+		expect(decision.kind).toBe("block");
+		if (decision.kind === "block") {
+			expect(decision.reason).toContain("cannot be appealed");
+			expect(decision.reason).not.toContain("request_permission");
+		}
+	});
+
+	test("shell file rewrite cannot be appealed even with a rationale", () => {
+		const cmd = `# pi-gate-goal: ${good.goal}\n# pi-gate-rationale: ${good.rationale}\npython3 - <<'PYEOF'\nopen("/tmp/omp-cache","w").write("x")\nPYEOF`;
+		const decision = decideGate(cmd, [rewrite], {});
 		expect(decision.kind).toBe("block");
 		if (decision.kind === "block") {
 			expect(decision.reason).toContain("cannot be appealed");

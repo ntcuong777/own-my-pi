@@ -3,7 +3,8 @@
  *
  * Built-in rules already cover rm -rf, sudo, force-push, whole-tree scans,
  * ssh remote commands, interpreter -c, crontab, env command injection,
- * PI_NO_GATE persistence, and the documented syntax-gate gaps that argv
+ * PI_NO_GATE persistence, python/sed/perl/cat/tee file rewrites (hard
+ * block, not appealable), and the documented syntax-gate gaps that argv
  * can actually see. This file adds harness-specific extras.
  *
  * Loaded from ~/.config/pi-agent-extensions/permission-gate/rules.ts
@@ -13,10 +14,9 @@
  * This remains a confirmation layer, not a sandbox. Remote hosts, later
  * cron payloads, and unread imports still need OS isolation. Local
  * interpreter and shell script files are read and scanned, including
- * test runners (`bun test`, `node --test`, `pytest`). Matched rewrites
- * reject until the agent supplies a goal-tied rationale, then prompt
- * (allow once / allow this exact command for the session / reject).
- * A later run of a session-allowed command still warns if it matches.
+ * test runners (`bun test`, `node --test`, `pytest`). File rewrites are
+ * a built-in hard block. A later run of a session-allowed command still
+ * warns if it matches.
  */
 export default function (helpers: {
 	anyCmd: (
@@ -74,20 +74,6 @@ export default function (helpers: {
 					anyCmd(p, ["kill", "killall", "pkill"], (a) =>
 						hasFlag(a, "9") || a.includes("-KILL") || a.includes("-9"),
 					),
-			},
-			{
-				label: "shell file rewrite",
-				group: "files",
-				action: "prompt",
-				matchOutputWrites: true,
-				pattern: "\\bsed\\s+-[a-zA-Z]*i|\\bperl\\s+-pi|\\bruby\\s+-i|write_text\\s*\\(|fileinput\\.input\\s*\\(|Path\\([^)]+\\)\\.write(?:_text|_bytes)?\\(|\\.write_text\\(|\\.write_bytes\\(|open\\([^)]*,\\s*(?:mode\\s*=\\s*)?[\"'][waxr+]|writeFile(?:Sync)?\\s*\\(|writeTextFile(?:Sync)?\\s*\\(|Bun\\.write\\s*\\(|outputFileSync\\s*\\(",
-				reason: "Prompt: edit files with the hashline `edit` tool, not python/node/bun/sed/perl in-place rewrites or cat/tee/redirect writes. Re-read and retry the edit if it failed.",
-				appealHint: "Acceptable: the user asked to run tests or a temp cleanup that must write, and hashline edit cannot do that job. Not acceptable: patching source because edit failed, or rewriting files for convenience.",
-				rejectReasons: [
-					"Use the hashline edit tool instead of a script",
-					"This would rewrite source, not a temp or test artifact",
-					"Wrong path or too broad",
-				],
 			},
 		],
 	};
