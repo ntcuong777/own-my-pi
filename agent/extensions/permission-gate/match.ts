@@ -9,6 +9,7 @@
 
 import type { ArgvPipeline, CompiledRule } from "./types.ts";
 import { collectFileScriptBodies, collectPipelines, tokenize } from "./shell.ts";
+import { collectProjectWriteTargets } from "./write-targets.ts";
 
 /**
  * Project regexes match against at most this many characters of the
@@ -31,6 +32,7 @@ export function matchRules(command: string, rules: CompiledRule[], opts?: { sess
 	let argvPipes: ArgvPipeline[] | undefined;
 	let decoded: string | undefined;
 	let fileBodies: string | undefined;
+	let writeTargets: string[] | undefined;
 	// Regex rules run against the raw string *and* the tokenizer-decoded
 	// words (quotes stripped, escapes decoded, redirect targets included —
 	// they are word tokens at this level). Raw-only matching let a quote
@@ -48,11 +50,13 @@ export function matchRules(command: string, rules: CompiledRule[], opts?: { sess
 		r.source === "project" && s.length > MAX_PROJECT_MATCH_LENGTH
 			? s.slice(0, MAX_PROJECT_MATCH_LENGTH)
 			: s;
+	const writes = () => (writeTargets ??= collectProjectWriteTargets(command, opts?.sessionCwd));
 	return rules.filter((r) =>
-		r.kind === "regex"
+		(r.matchOutputWrites === true && writes().length > 0) ||
+		(r.kind === "regex"
 			? r.pattern.test(clip(command, r)) || r.pattern.test(clip(decode(), r)) ||
 				(bodies() !== "" && r.pattern.test(clip(bodies(), r)))
-			: (argvPipes ??= collectPipelines(command, 0, opts)).some((p) => r.test(p)),
+			: (argvPipes ??= collectPipelines(command, 0, opts)).some((p) => r.test(p))),
 	);
 }
 

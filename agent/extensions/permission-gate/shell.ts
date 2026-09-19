@@ -77,6 +77,9 @@ export interface ShellCommand {
 	/** Literal `< file` targets. Interpreters that run stdin as a script
 	 * (`python3 < /tmp/x.py`) execute these files; they are not argv words. */
 	inFiles: string[];
+	/** Literal `>`, `>>`, `>|`, `&>` (and `>& file`) targets. `2>&1` is an
+	 * fd dup and is not recorded. */
+	outFiles: string[];
 }
 
 /** Commands connected by `|` / `|&`, in order. */
@@ -116,6 +119,7 @@ export function sequencedPipelines(command: string): SequencedPipeline[] {
 	// records the fact on the command instead.
 	let redirectSub = false;
 	let inFiles: string[] = [];
+	let outFiles: string[] = [];
 	// Sequence number of the current simple command, counted exactly like
 	// the tokenizer counts it (see tokenize). Heredoc tokens carry the seq
 	// of the command that had the << operator, so an operator between <<
@@ -165,14 +169,15 @@ export function sequencedPipelines(command: string): SequencedPipeline[] {
 		herestrings = [];
 		heredocs = [];
 		redirectSub = false;
-		const cmd: ShellCommand = { argv, env, subs, outSubs, stdinSub, inFiles };
+		const cmd: ShellCommand = { argv, env, subs, outSubs, stdinSub, inFiles, outFiles };
 		flushedBySeq.set(seq, { cmd, pl: pipeline });
-		if (argv.length || subs.length || outSubs.length || env.length || inFiles.length) pipeline.push(cmd);
+		if (argv.length || subs.length || outSubs.length || env.length || inFiles.length || outFiles.length) pipeline.push(cmd);
 		argv = [];
 		env = [];
 		subs = [];
 		outSubs = [];
 		inFiles = [];
+		outFiles = [];
 		afterTime = false;
 		caseWord = false;
 	};
@@ -237,10 +242,14 @@ export function sequencedPipelines(command: string): SequencedPipeline[] {
 			// are dropped — except that an input target carrying a
 			// substitution placeholder pipes that substitution's output into
 			// this command, which flushCommand must know.
+			const writes = op === ">" || op === ">>" || op === ">|" || op === "&>"
+				|| (op === ">&" && token.value !== "-" && !/^\d+$/.test(token.value));
 			if (op === "<<<") herestrings.push(token.value);
 			else if (op === "<") {
 				if (hasSubPlaceholder(token.value)) redirectSub = true;
 				else inFiles.push(token.value);
+			} else if (writes) {
+				if (!hasSubPlaceholder(token.value)) outFiles.push(token.value);
 			}
 			continue;
 		}

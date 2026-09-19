@@ -48,7 +48,8 @@ via activation or `npm install -g`.
 
 Use the hashline `edit` tool. Never rewrite files with `python -c`,
 `node -e`, `bun -e`, a python/node/bun heredoc, a one-off `*.py`/`*.js`/
-`*.ts` patcher, `sed -i`, or `perl -pi`. Those skip hashline, slow-mode,
+`*.ts` patcher, `sed -i`, `perl -pi`, `cat > file <<EOF`, `tee`, or
+`echo … > file`. Those skip hashline, slow-mode,
 and undo. Writing a temp script and running it (`python3 /tmp/patch.py`,
 `node /tmp/x.js`, `bun /tmp/x.ts`, `bash /tmp/x.sh`, `source x.sh`) is
 the same bypass: the gate reads that file and prompts only if you

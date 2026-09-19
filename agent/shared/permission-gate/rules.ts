@@ -79,8 +79,9 @@ export default function (helpers: {
 				label: "shell file rewrite",
 				group: "files",
 				action: "prompt",
+				matchOutputWrites: true,
 				pattern: "\\bsed\\s+-[a-zA-Z]*i|\\bperl\\s+-pi|\\bruby\\s+-i|write_text\\s*\\(|fileinput\\.input\\s*\\(|Path\\([^)]+\\)\\.write(?:_text|_bytes)?\\(|\\.write_text\\(|\\.write_bytes\\(|open\\([^)]*,\\s*(?:mode\\s*=\\s*)?[\"'][waxr+]|writeFile(?:Sync)?\\s*\\(|writeTextFile(?:Sync)?\\s*\\(|Bun\\.write\\s*\\(|outputFileSync\\s*\\(",
-				reason: "Prompt: edit files with the hashline `edit` tool, not python/node/bun/sed/perl in-place rewrites. Re-read and retry the edit if it failed.",
+				reason: "Prompt: edit files with the hashline `edit` tool, not python/node/bun/sed/perl in-place rewrites or cat/tee/redirect writes. Re-read and retry the edit if it failed.",
 				appealHint: "Acceptable: the user asked to run tests or a temp cleanup that must write, and hashline edit cannot do that job. Not acceptable: patching source because edit failed, or rewriting files for convenience.",
 				rejectReasons: [
 					"Use the hashline edit tool instead of a script",

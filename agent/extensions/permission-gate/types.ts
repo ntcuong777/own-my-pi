@@ -85,6 +85,8 @@ export interface RuleEntry {
 	appealHint?: string;
 	/** Default true except for protected labels. */
 	appealable?: boolean;
+	/** Also match when the command redirects, tees, or dd of= into a non-temp file. */
+	matchOutputWrites?: boolean;
 }
 
 export interface GateConfig {
@@ -138,6 +140,7 @@ export type CompiledRule = {
 	appealHint?: string;
 	appealable?: boolean;
 	source: RuleSource;
+	matchOutputWrites?: boolean;
 } & (
 	| { kind: "regex"; pattern: RegExp }
 	| { kind: "argv"; test: (pipeline: ArgvPipeline) => boolean }

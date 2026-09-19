@@ -169,6 +169,9 @@ export function sanitizeConfig(raw: unknown, origin: string, allowTest: boolean,
 				warn?.(`permission-gate: ${origin}: rule "${e.label}" appealable is not a boolean — ignored`);
 				delete e.appealable;
 			}
+			if (e.matchOutputWrites !== undefined && typeof e.matchOutputWrites !== "boolean") {
+				delete e.matchOutputWrites;
+			}
 			entries.push(e);
 		}
 		return entries;
@@ -351,7 +354,7 @@ function compileEntry(r: RuleEntry, source: RuleSource, warn?: WarnFn): Compiled
 		if (r.pattern !== undefined) {
 			warn?.(`permission-gate: rule "${label}" sets both pattern and test — pattern is ignored`);
 		}
-		return { kind: "argv", label, group: r.group, action, reason, rejectReasons: r.rejectReasons, appealHint: r.appealHint, appealable: r.appealable, source, test: r.test };
+		return { kind: "argv", label, group: r.group, action, reason, rejectReasons: r.rejectReasons, appealHint: r.appealHint, appealable: r.appealable, source, matchOutputWrites: r.matchOutputWrites, test: r.test };
 	}
 	if (r.test !== undefined) {
 		// JSON cannot carry functions but can carry `true` — compiling such a
@@ -385,7 +388,7 @@ function compileEntry(r: RuleEntry, source: RuleSource, warn?: WarnFn): Compiled
 		const pattern = r.pattern instanceof RegExp
 			? new RegExp(r.pattern.source, flags)
 			: new RegExp(r.pattern, flags);
-		return { kind: "regex", label, group: r.group, action, reason, rejectReasons: r.rejectReasons, appealHint: r.appealHint, appealable: r.appealable, source, pattern };
+		return { kind: "regex", label, group: r.group, action, reason, rejectReasons: r.rejectReasons, appealHint: r.appealHint, appealable: r.appealable, source, matchOutputWrites: r.matchOutputWrites, pattern };
 	} catch (err) {
 		warn?.(`permission-gate: invalid regex for "${label}": ${(err as Error).message}`);
 		return undefined;

@@ -161,6 +161,33 @@ describe("permission-gate overlay", () => {
 	test("python open().read of a path starting with w is not a rewrite", () => {
 		expect(overlayLabels(`python3 -c 'print(open("write.py").read())'`)).not.toContain("shell file rewrite");
 	});
+
+	test("cat heredoc to a project file is a prompted rewrite", () => {
+		const cmd = "cat > tests/tui_smoke/probe.rs <<'EOF'\nfn foo() -> i32 { if n > 0 { 1 } else { 0 } }\nEOF";
+		expect(overlayLabels(cmd)).toContain("shell file rewrite");
+	});
+
+	test("cat heredoc to stdout is not a rewrite even with > in the body", () => {
+		const cmd = "cat <<'EOF'\nfn foo() -> i32 { if n > 0 { 1 } else { 0 } }\nEOF";
+		expect(overlayLabels(cmd)).not.toContain("shell file rewrite");
+	});
+
+	test("redirect to /tmp or /dev/null is not a rewrite", () => {
+		expect(overlayLabels("cargo test -- --nocapture 2>&1 | grep PROBE")).not.toContain("shell file rewrite");
+		expect(overlayLabels("mkdir -p /tmp/rblc")).not.toContain("shell file rewrite");
+		expect(overlayLabels("echo hi > /tmp/out.txt")).not.toContain("shell file rewrite");
+		expect(overlayLabels("echo hi > /dev/null")).not.toContain("shell file rewrite");
+	});
+
+	test("tee of a project file is a prompted rewrite", () => {
+		expect(overlayLabels("cargo test 2>&1 | tee tests/tui_smoke/out.log")).toContain("shell file rewrite");
+		expect(overlayLabels("cargo test 2>&1 | tee /tmp/out.log")).not.toContain("shell file rewrite");
+	});
+
+	test("combined cat heredoc plus python patch is a rewrite", () => {
+		const cmd = "cd /tmp && mkdir -p /tmp/rblc && cat > tests/tui_smoke/probe.rs <<'EOF'\nfn dump() { if n > 0 { 1 } else { 0 } }\nEOF\npython3 - <<'PYEOF'\ns=open(\"tests/tui_smoke/main.rs\").read()\nopen(\"tests/tui_smoke/main.rs\",\"w\").write(s)\nPYEOF\ndevenv shell -- cargo test -- --nocapture 2>&1 | grep PROBE";
+		expect(overlayLabels(cmd)).toContain("shell file rewrite");
+	});
 });
 
 describe("permission-gate obscured scripts", () => {
