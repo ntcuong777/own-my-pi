@@ -16,6 +16,7 @@
  * test runners (`bun test`, `node --test`, `pytest`). Matched rewrites
  * reject until the agent supplies a goal-tied rationale, then prompt
  * (allow once / allow this exact command for the session / reject).
+ * A later run of a session-allowed command still warns if it matches.
  */
 export default function (helpers: {
 	anyCmd: (

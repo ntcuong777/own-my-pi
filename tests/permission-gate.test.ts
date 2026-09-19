@@ -11,6 +11,7 @@ import {
 	compilePromptSettings,
 	decisionToResult,
 	DEFAULT_PROMPT_SETTINGS,
+	formatSessionAllowWarning,
 	formatUserRejection,
 	MAX_SESSION_ALLOW,
 	promptDeadlines,
@@ -399,6 +400,20 @@ describe("permission-gate appeals", () => {
 		expect(decideGate("rm -rf /tmp/omp-cache", [rm], { sessionAllow: session }).kind).toBe("allow");
 		expect(decideGate("rm -rf /tmp/other-cache", [rm], { sessionAllow: session }).kind).toBe("block");
 		expect(decideGate("python3 -c 'Path(\"x\").write_text(\"hi\")'", [rewrite], { sessionAllow: session }).kind).toBe("block");
+	});
+
+	test("session allow still warns when the command matches a gate rule", () => {
+		const session = new SessionAllow();
+		session.add("rm -rf /tmp/omp-cache");
+		const decision = decideGate("rm -rf /tmp/omp-cache", [rm], { sessionAllow: session });
+		expect(decision.kind).toBe("allow");
+		if (decision.kind !== "allow") return;
+		expect(decision.warning).toBe(formatSessionAllowWarning("rm -rf /tmp/omp-cache", "recursive delete"));
+		expect(decision.warning).toContain("recursive delete");
+		expect(decision.warning).toContain("rm -rf /tmp/omp-cache");
+		expect(decision.warning).toMatch(/session/i);
+		expect(decideGate("rm -rf /tmp/omp-cache", [], { sessionAllow: session }).warning).toBeUndefined();
+		expect(decideGate("rm -rf /tmp/omp-cache", [rm], { onceAllow: new Set(["rm -rf /tmp/omp-cache"]) }).warning).toBeUndefined();
 	});
 
 	test("one-shot allow is consumed on the next matching command", () => {

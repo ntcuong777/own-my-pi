@@ -8,7 +8,7 @@
  */
 
 import { PROTECTED_LABELS } from "./config.ts";
-import type { SessionAllow } from "./prompt.ts";
+import { formatSessionAllowWarning, type SessionAllow } from "./prompt.ts";
 import type { CompiledRule } from "./types.ts";
 
 export const MIN_GOAL_CHARS = 12;
@@ -50,7 +50,7 @@ export type Appeal = { goal: string; rationale: string };
 export type AppealCheck = { ok: true } | { ok: false; reason: string };
 
 export type GateDecision =
-	| { kind: "allow" }
+	| { kind: "allow"; warning?: string }
 	| { kind: "block"; reason: string }
 	| { kind: "prompt"; labels: string; matches: CompiledRule[]; appeal: Appeal; command: string };
 
@@ -167,12 +167,15 @@ export function decideGate(command: string, matched: CompiledRule[], opts: Decid
 		opts.onceAllow.delete(stripped);
 		return { kind: "allow" };
 	}
-	if (opts.sessionAllow?.has(stripped)) {
-		return { kind: "allow" };
-	}
-
 	const promptsEnabled = opts.promptsEnabled ?? true;
 	const pending = pendingRules(matched, promptsEnabled);
+	if (opts.sessionAllow?.has(stripped)) {
+		if (pending.length === 0) return { kind: "allow" };
+		return {
+			kind: "allow",
+			warning: formatSessionAllowWarning(stripped, pending.map((r) => r.label).join(", ")),
+		};
+	}
 	if (pending.length === 0) return { kind: "allow" };
 
 	const unappealable = pending.filter((r) => !isAppealable(r));

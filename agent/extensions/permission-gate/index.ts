@@ -11,7 +11,8 @@
  * The review widget is Allow once / Always allow this command in session /
  * Reject (pre-filled reasons plus type-your-own). Session allow is the
  * exact requested command, not the rule and not every later script; cap
- * 512, LRU. A reminder fires after 60s;
+ * 512, LRU. A later run of that command still warns if it matches a
+ * gate rule. A reminder fires after 60s;
  * 5 minutes after that the prompt auto-rejects (configurable). Toggle
  * prompting with /gate. Block rules stay active when prompting is off.
  * PI_NO_GATE=1 turns the whole extension off.
@@ -100,7 +101,13 @@ export default function permissionGate(pi: ExtensionAPI) {
 		deferOnce = false,
 	) {
 		const decision = decideGate(command, matched, { sessionAllow, onceAllow, promptsEnabled, appeal });
-		if (decision.kind === "allow") return undefined;
+		if (decision.kind === "allow") {
+			if (decision.warning) {
+				if (ctx.hasUI) ctx.ui.notify(decision.warning, "warning");
+				else console.warn(decision.warning);
+			}
+			return undefined;
+		}
 		if (decision.kind === "block") return { block: true, reason: decision.reason };
 
 		if (!ctx.hasUI) {

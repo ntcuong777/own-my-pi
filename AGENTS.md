@@ -49,7 +49,7 @@ supply a rationale tied to the user's current request (`request_permission`
 in Pi, or `# pi-gate-goal` / `# pi-gate-rationale` comments in Cursor
 Shell). A gated command without that rationale never asks the user.
 Test runners (`bun test`, `node --test`, `pytest`) are scanned the same
-way. The prompt is Allow once, Always allow this exact command for the session (not every script; LRU cap 512), or
+way. The prompt is Allow once, Always allow this exact command for the session (not every script; LRU cap 512; later runs still warn if they match a gate rule), or
 Reject with a reason (pre-filled plus type-your-own). After 60s with no
 answer a reminder fires; 5 minutes after that the prompt auto-rejects.
 Both delays and the timeout default (reject vs allow) are configurable

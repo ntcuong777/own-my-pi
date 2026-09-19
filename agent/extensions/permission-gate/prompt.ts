@@ -120,6 +120,16 @@ export class SessionAllow {
 	}
 }
 
+const SESSION_WARN_CMD = 160;
+
+/** User-visible toast when a session-allowed command still matches a rule. */
+export function formatSessionAllowWarning(command: string, labels: string): string {
+	const snippet = command.length > SESSION_WARN_CMD
+		? `${command.slice(0, SESSION_WARN_CMD - 3)}...`
+		: command;
+	return `Allowed this session (${labels}): ${snippet}`;
+}
+
 export function rejectReasonChoices(rules: { rejectReasons?: string[] }[]): string[] {
 	const out: string[] = [];
 	const seen = new Set<string>();
