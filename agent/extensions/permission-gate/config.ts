@@ -273,6 +273,7 @@ const MAX_PROJECT_LABEL_LENGTH = 100;
  *     its own bash tool;
  *   - "non-literal command name" is what keeps `$a id` / `$(echo sudo) id`
  *     from bypassing every argv rule, blocks included.
+ *   - "persist PI_NO_GATE" is the kill-switch self-protection.
  *
  * User layers are trusted and may still disable them.
  */
@@ -280,6 +281,7 @@ export const PROTECTED_LABELS = new Set([
 	"unparseable command (depth budget)",
 	"modify gate config",
 	"non-literal command name",
+	"persist PI_NO_GATE",
 ]);
 
 function compileEntry(r: RuleEntry, source: RuleSource, warn?: WarnFn): CompiledRule | undefined {
@@ -298,5 +300,208 @@ function compileEntry(r: RuleEntry, source: RuleSource, warn?: WarnFn): Compiled
 		reason = base === undefined
 			? undefined
 			: `[project rule] ${base}`.slice(0, MAX_PROJECT_REASON_LENGTH);
+	}
+	if (typeof r.test === "function") {
+		if (r.pattern !== undefined) {
+			warn?.(`permission-gate: rule "${label}" sets both pattern and test — pattern is ignored`);
+		}
+		return { kind: "argv", label, group: r.group, action, reason, source, test: r.test };
+	}
+	if (r.test !== undefined) {
+		// JSON cannot carry functions but can carry `true` — compiling such a
+		// rule made every later matchRules call throw.
+		warn?.(`permission-gate: rule "${label}" test is not a function — skipped`);
+		return undefined;
+	}
+	if (r.pattern === undefined) {
+		warn?.(`permission-gate: rule "${label}" has neither pattern nor test — skipped`);
+		return undefined;
+	}
+	const patternSource = r.pattern instanceof RegExp ? r.pattern.source : String(r.pattern);
+	if (source === "project" && patternSource.length > MAX_PROJECT_PATTERN_LENGTH) {
+		warn?.(
+			`permission-gate: project rule "${label}" pattern exceeds ` +
+			`${MAX_PROJECT_PATTERN_LENGTH} chars — skipped`,
+		);
+		return undefined;
+	}
+	if (source === "project" && NESTED_QUANTIFIER.test(patternSource)) {
+		warn?.(
+			`permission-gate: project rule "${label}" pattern nests quantifiers ` +
+			`((x+)+ shapes backtrack exponentially) — skipped`,
+		);
+		return undefined;
+	}
+	try {
+		// `g`/`y` make RegExp.test stateful via lastIndex — a rule carrying
+		// them would only match every other command it is tested against.
+		const flags = (r.pattern instanceof RegExp ? r.pattern.flags : r.flags ?? "i").replace(/[gy]/g, "");
+		const pattern = r.pattern instanceof RegExp
+			? new RegExp(r.pattern.source, flags)
+			: new RegExp(r.pattern, flags);
+		return { kind: "regex", label, group: r.group, action, reason, source, pattern };
+	} catch (err) {
+		warn?.(`permission-gate: invalid regex for "${label}": ${(err as Error).message}`);
+		return undefined;
+	}
+}
 
-[Showing lines 1-300 of 502. Use :301 to continue]
+export function compileRules(
+	layers: ConfigLayers,
+	warn?: WarnFn,
+	opts?: { headless?: boolean },
+): CompiledRule[] {
+	const { userCode, userJson, project } = layers;
+	// Defense in depth: layers normally arrive sanitized (loadConfig), but a
+	// malformed shape here must degrade, never throw.
+	const strings = (v: unknown): string[] =>
+		Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+	const entries = (v: RuleEntry[] | undefined): RuleEntry[] => (Array.isArray(v) ? v : []);
+	const userDisabled = new Set([
+		...strings(userCode.disabledRules),
+		...strings(userJson.disabledRules),
+	]);
+	const userDisabledGroups = new Set([
+		...strings(userCode.disabledGroups),
+		...strings(userJson.disabledGroups),
+	]);
+	// The project layer ships with the repo and is untrusted (same reason
+	// project rules.ts is refused): a malicious .pi/permission-gate.json must
+	// not be able to silently neuter the gate. Block rules survive it, and
+	// anything it does disable is reported so the user notices.
+	const projectDisabled = new Set(strings(project.disabledRules));
+	const projectDisabledGroups = new Set(strings(project.disabledGroups));
+	const projectApplied: string[] = [];
+	const projectRefused: string[] = [];
+	const protectedRefused: string[] = [];
+	const headlessRefused: string[] = [];
+	const compiled: CompiledRule[] = [];
+	let hadError = false;
+
+	const add = (list: RuleEntry[] | undefined, source: RuleSource) => {
+		for (const r of entries(list)) {
+			if (r === null || typeof r !== "object" || typeof r.label !== "string") {
+				warn?.(`permission-gate: ${source} rule without a string label — skipped`);
+				hadError = true;
+				continue;
+			}
+			if (userDisabled.has(r.label)) continue;
+			if (r.group && userDisabledGroups.has(r.group)) continue;
+			// Group disables from the project layer walk the same refusal
+			// ladder as label disables — a repo must not get by group what it
+			// is refused by label.
+			if (projectDisabled.has(r.label) || (r.group && projectDisabledGroups.has(r.group))) {
+				if ((r.action ?? "prompt") === "block") {
+					projectRefused.push(r.label);
+				} else if (PROTECTED_LABELS.has(r.label)) {
+					// These prompt rules are load-bearing (see PROTECTED_LABELS):
+					// block survival is illusory if the sentinel or the gate's
+					// self-protection underneath them is project-disableable.
+					protectedRefused.push(r.label);
+				} else if (opts?.headless) {
+					// Headless prompts hard-block, so letting the untrusted project
+					// layer disable one would *escalate* "blocked" to "runs with
+					// zero record" — refuse exactly like a block rule.
+					headlessRefused.push(r.label);
+				} else {
+					projectApplied.push(r.label);
+					continue;
+				}
+			}
+			const c = compileEntry(r, source, warn);
+			if (c) compiled.push(c);
+			else hadError = true;
+		}
+	};
+
+	// `rules` (full replace) applies to the *prompt* defaults only — the
+	// block defaults protect the agent itself and are only removable via
+	// `disabledRules`, so existing configs don't silently lose them.
+	// Both user layers replacing the defaults at once is almost certainly a
+	// config mistake — every other conflict in this merge warns, so the
+	// shadowed JSON layer must too instead of vanishing silently.
+	if (userCode.rules && userJson.rules) {
+		warn?.("permission-gate: rules.ts `rules` shadows rules.json `rules` — the JSON rules are ignored (use extraRules)");
+	}
+	const promptBase = userCode.rules ?? userJson.rules;
+	if (promptBase) add(promptBase, userCode.rules ? "user-code" : "user-json");
+	else add(DEFAULT_PROMPT_RULES, "built-in");
+	add(DEFAULT_BLOCK_RULES, "built-in");
+	add(userCode.extraRules, "user-code");
+	add(userJson.extraRules, "user-json");
+	// A repo may not replace the rule set — like a refused disabledRules,
+	// the attempt is surfaced instead of silently ignored.
+	if (project.rules) {
+		warn?.("permission-gate: project config may not replace rules — `rules` key ignored (use extraRules)");
+	}
+	let projectExtra = entries(project.extraRules);
+	if (projectExtra.length > MAX_PROJECT_RULES) {
+		warn?.(
+			`permission-gate: project config has ${projectExtra.length} extraRules — ` +
+			`only the first ${MAX_PROJECT_RULES} are used`,
+		);
+		projectExtra = projectExtra.slice(0, MAX_PROJECT_RULES);
+	}
+	add(projectExtra, "project");
+
+	if (compiled.length === 0 && hadError) {
+		warn?.("permission-gate: all rules failed, falling back to defaults");
+		add(DEFAULT_PROMPT_RULES, "built-in");
+		add(DEFAULT_BLOCK_RULES, "built-in");
+	}
+	// Project extraRules run against every command and ship with the repo —
+	// surface them like disabledRules so the user notices what an untrusted
+	// config contributes.
+	if (projectExtra.length) {
+		warn?.(
+			`permission-gate: project config adds rule(s): ` +
+			`${projectExtra.map((r) => String(r.label).slice(0, MAX_PROJECT_LABEL_LENGTH)).join(", ")}`,
+		);
+	}
+	if (projectApplied.length) {
+		warn?.(`permission-gate: project config disabled rule(s): ${[...new Set(projectApplied)].join(", ")}`);
+	}
+	if (projectRefused.length) {
+		warn?.(`permission-gate: project config may not disable block rule(s): ${[...new Set(projectRefused)].join(", ")}`);
+	}
+	if (protectedRefused.length) {
+		warn?.(`permission-gate: project config may not disable load-bearing prompt rule(s): ${[...new Set(protectedRefused)].join(", ")}`);
+	}
+	if (headlessRefused.length) {
+		warn?.(`permission-gate: project config may not disable prompt rule(s) without a UI: ${[...new Set(headlessRefused)].join(", ")}`);
+	}
+	return compiled;
+}
+
+/** Built-in prompt + block rules with no user/project overlay. */
+export function compileDefaultRules(): CompiledRule[] {
+	return compileRules({ userCode: {}, userJson: {}, project: {} });
+}
+
+// ── persistence (user JSON only — /gate add|rm write here) ───────────────
+
+/** Merge the sanitized config over the raw on-disk JSON, so unknown keys a
+ * hand-edited rules.json carries survive /gate add|rm round-trips — `cfg`
+ * is the *sanitized* view, and writing it back verbatim deleted anything
+ * sanitizeConfig doesn't model. */
+export function mergeUserJson(raw: unknown, cfg: GateConfig): Record<string, unknown> {
+	const base = raw !== null && typeof raw === "object" && !Array.isArray(raw)
+		? (raw as Record<string, unknown>)
+		: {};
+	return { ...base, ...cfg };
+}
+
+/** Returns false (with a warning) if the write failed — callers must not
+ * report success then, since reloadRules re-reads from disk and would
+ * silently drop the in-memory change. */
+export function saveUserJson(cfg: GateConfig, warn?: WarnFn): boolean {
+	try {
+		fs.mkdirSync(configDir(), { recursive: true });
+		const merged = mergeUserJson(readJsonSafe(userJsonConfigPath()), cfg);
+		fs.writeFileSync(userJsonConfigPath(), JSON.stringify(merged, null, 2) + "\n");
+		return true;
+	} catch (err) {
+		warn?.(`permission-gate: failed to save ${userJsonConfigPath()}: ${(err as Error).message}`);
+		return false;
+	}
+}

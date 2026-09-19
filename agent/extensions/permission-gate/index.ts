@@ -73,8 +73,16 @@ export default function permissionGate(pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_call", async (event, ctx) => {
-		if (event.toolName !== "bash") return undefined;
-		const command = (event as BashToolCallEvent).input.command;
+		let command: string | undefined;
+		if (event.toolName === "bash") {
+			command = (event as BashToolCallEvent).input.command;
+		} else if (event.toolName === "write" || event.toolName === "edit") {
+			const input = (event as { input?: Record<string, unknown> }).input;
+			const filePath = String(input?.path ?? "");
+			command = `${event.toolName} ${filePath}\n${JSON.stringify(input ?? {})}`;
+		} else {
+			return undefined;
+		}
 		if (!command) return undefined;
 
 		// A throwing rule must fail *closed* — without this guard a malformed
@@ -83,7 +91,7 @@ export default function permissionGate(pi: ExtensionAPI) {
 		// throw" (loadConfig sanitizes; this is defense in depth).
 		let matched: CompiledRule[];
 		try {
-			matched = matchRules(command, rules);
+			matched = matchRules(command, rules, { sessionCwd: ctx.cwd });
 		} catch (err) {
 			if (ctx.hasUI) {
 				ctx.ui.notify(`permission-gate: rule evaluation failed: ${(err as Error).message}`, "warning");

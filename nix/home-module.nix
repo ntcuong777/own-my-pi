@@ -53,6 +53,8 @@ in
     ".pi/agent/extensions".source = mkLive "agent/extensions";
     ".pi/agent/vendor".source = mkLive "vendor";
     ".local/bin/pi-personal".source = mkLive "agent/bin/pi-personal";
+    ".config/pi-agent-extensions/permission-gate/rules.ts".source =
+      mkLive "agent/shared/permission-gate/rules.ts";
   }
   // skillLinks;
 

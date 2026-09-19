@@ -31,7 +31,14 @@ Vendored from [rytswd/pi-agent-extensions](https://github.com/rytswd/pi-agent-ex
 - `direnv/` — load allowed `.envrc` into `process.env`; reloads on direnv
   watch-file changes. Requires `direnv` on PATH.
 - `permission-gate/` — `/gate` prompt/block for `rm -rf`, sudo, force-push,
-  whole-tree scans. Confirmation layer, not a sandbox. `PI_NO_GATE=1` disables.
+  whole-tree scans, ssh remote commands, interpreter `-c`, crontab, and
+  env-var launchers (`GIT_PAGER=…`). Tracks `cd` across `&&`/`;`, fetch-then-
+  exec in the same command, echo/printf process substitutions, and more
+  wrappers (`valgrind`, `strace`, `chroot`, …). `write`/`edit` of gate
+  config or `PI_NO_GATE=` are gated too. Confirmation layer, not a sandbox.
+  `PI_NO_GATE=1` disables. Default overlay:
+  `agent/shared/permission-gate/rules.ts` live-linked to
+  `~/.config/pi-agent-extensions/permission-gate/rules.ts`.
 - `slow-mode/` — `/slow-mode` review gate for `write`/`edit` before disk.
   Optional `difft` / `delta`.
 - `statusline/` — model, usage, context, VCS on one line. `/statusline`.

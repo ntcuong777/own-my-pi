@@ -17,6 +17,12 @@
  */
 
 import { collapseBrackets, PARSE_BUDGET_SENTINEL } from "./tokenize.ts";
+import {
+	envExecScripts,
+	envWrapperAssignments,
+	interpreterScripts,
+	sshRemoteScript,
+} from "./hardening.ts";
 
 /** Mutable per-unwrap parsing state handed to a wrapper's onArg. */
 interface WrapperArgState {
@@ -53,12 +59,9 @@ interface Wrapper {
  * arguments. Unwrapped before matching so `sudo rm -rf /` still counts as
  * `rm` and `timeout 30 find / …` still counts as `find`.
  *
- * Deliberately only the common wrappers. Anything absent from this table
- * shields whatever follows it (`valgrind rm -rf /` matches nothing), but
- * the launcher long tail — debuggers, sandboxes, cpu/io shapers, the
- * dynamic loader, chroot and friends — is not worth the table it takes: a
- * syntax gate cannot enumerate launchers, so the tail is pinned as a
- * documented non-goal instead.
+ * Common wrappers plus the launchers that actually show up in agent logs
+ * (valgrind, strace, gdb --args, chroot, bwrap, …). A syntax gate still
+ * cannot enumerate every launcher; unknown names still shield what follows.
  */
 const WRAPPERS: Record<string, Wrapper> = {
 	sudo: { valueOpts: new Set(["-u", "-g", "-p", "-h", "-C", "-D", "-R", "-T", "-U"]) },
@@ -124,6 +127,75 @@ const WRAPPERS: Record<string, Wrapper> = {
 			return "skip";
 		},
 	},
+	valgrind: { valueOpts: new Set(["--log-file", "--tool", "--suppressions", "--xml-file"]) },
+	strace: { valueOpts: new Set(["-e", "-o", "-p", "-P", "-E", "--trace", "--output"]) },
+	ltrace: { valueOpts: new Set(["-e", "-o", "-p"]) },
+	perf: {
+		valueOpts: new Set(),
+		onArg: (arg, state) => {
+			if (state.execNext) return undefined;
+			if (arg === "--") { state.execNext = true; return "skip"; }
+			return "skip";
+		},
+	},
+	gdb: {
+		valueOpts: new Set(["-x", "-ex", "-s", "-e", "-se", "-c", "-p", "--pid", "-d", "--directory", "-cd"]),
+		onArg: (arg, state) => {
+			if (arg === "--args") { state.execNext = true; return "skip"; }
+			if (state.execNext) return undefined;
+			return undefined;
+		},
+	},
+	lldb: {
+		valueOpts: new Set(["-s", "-o", "-f", "--file", "-p", "--attach-pid"]),
+		onArg: (arg, state) => {
+			if (arg === "--") { state.execNext = true; return "skip"; }
+			if (state.execNext) return undefined;
+			return undefined;
+		},
+	},
+	chroot: { valueOpts: new Set(["--userspec", "--groups"]), skipPositionals: 1 },
+	unshare: { valueOpts: new Set(["-S", "-G", "-r", "--map-user", "--map-group", "--wd", "--kill-child"]) },
+	nsenter: { valueOpts: new Set(["-t", "--target", "-w", "--wd", "-S", "-G"]) },
+	firejail: { valueOpts: new Set(["-c", "--join", "--profile", "--chroot", "--tmpfs", "--blacklist", "--whitelist"]) },
+	bwrap: {
+		valueOpts: new Set(),
+		onArg: (arg, state) => {
+			if (state.execNext) return undefined;
+			if (arg === "--") { state.execNext = true; return "skip"; }
+			return "skip";
+		},
+	},
+	bubblewrap: {
+		valueOpts: new Set(),
+		onArg: (arg, state) => {
+			if (state.execNext) return undefined;
+			if (arg === "--") { state.execNext = true; return "skip"; }
+			return "skip";
+		},
+	},
+	ionice: { valueOpts: new Set(["-c", "-n", "-p", "--class", "--classdata", "--pid"]) },
+	taskset: { valueOpts: new Set(["-c", "--cpu-list"]), skipPositionals: 1 },
+	numactl: { valueOpts: new Set(["-m", "-N", "-C", "-p", "--membind", "--cpunodebind", "--physcpubind"]) },
+	prlimit: { valueOpts: new Set(["-p", "--pid"]) },
+	fakeroot: { valueOpts: new Set(["-u", "-s", "-i", "--lib"]) },
+	fakechroot: { valueOpts: new Set(["-s", "-e", "-b", "--use-system-libs"]) },
+	eatmydata: { valueOpts: new Set() },
+	chronic: { valueOpts: new Set() },
+	rlwrap: { valueOpts: new Set(["-C", "-f", "-H", "-b", "-a"]) },
+	capsh: {
+		valueOpts: new Set(["--caps", "--drop", "--user", "--uid", "--gid", "--groups", "--iab"]),
+		onArg: (arg, state) => {
+			if (state.execNext) return undefined;
+			if (arg === "-c" || arg === "--") { state.execNext = true; return arg === "-c" ? "stop" : "skip"; }
+			return undefined;
+		},
+	},
+	setpriv: { valueOpts: new Set(["--reuid", "--regid", "--groups", "--inh-caps", "--bounding-set"]) },
+	proot: { valueOpts: new Set(["-r", "-b", "-w", "-0", "-S", "-R"]) },
+	ccache: { valueOpts: new Set() },
+	distcc: { valueOpts: new Set() },
+	sshpass: { valueOpts: new Set(["-p", "-f", "-d", "-e"]) },
 };
 
 // argv[0] spelled as a path still runs the same program: /bin/rm is rm.
@@ -240,7 +312,7 @@ export const STDIN_RUNNERS = new Set(["parallel"]);
  * rule and the synthesis can never disagree about what counts as a
  * fetcher. Only curl and wget: the exotic droppers (nc, socat, aria2c,
  * ftp, …) are documented non-goals. */
-export const FETCHERS = new Set(["curl", "wget"]);
+export const FETCHERS = new Set(["curl", "wget", "wget2", "aria2c", "http", "https", "httpie", "fetch"]);
 
 /** True if this argv decodes obfuscated data — the producer side of the
  * decode-and-execute correlation, shared by the substitution synthesis
@@ -248,7 +320,15 @@ export const FETCHERS = new Set(["curl", "wget"]);
  * base64 is the one modeled decoder; the rest of the decoder zoo (xxd,
  * zcat, gpg -d, openssl …) is a documented non-goal. */
 export function isDecoder(rawArgv: string[]): boolean {
-	return unwrap(rawArgv)[0] === "base64";
+	const [cmd, ...args] = unwrap(rawArgv);
+	if (cmd === "base64" || cmd === "base32" || cmd === "xxd" || cmd === "uudecode") return true;
+	if (cmd === "zcat" || cmd === "gzcat" || cmd === "xzcat" || cmd === "bzcat" || cmd === "lzcat") return true;
+	if ((cmd === "gzip" || cmd === "gunzip" || cmd === "bzip2" || cmd === "xz" || cmd === "zstd") &&
+		args.some((a) => a === "-d" || a === "--decompress" || a === "-dc" || a === "-c")) return true;
+	if (cmd === "openssl" && args.some((a) => a === "enc" || a === "base64") &&
+		args.some((a) => a === "-d" || a === "-base64")) return true;
+	if (cmd === "gpg" && args.some((a) => a === "-d" || a === "--decrypt")) return true;
+	return false;
 }
 
 // tmux subcommands whose trailing arguments are run as a shell command.
@@ -324,7 +404,12 @@ const GIT_EXEC_CONFIG_KEYS = new Set(["core.fsmonitor", "core.pager", "core.sshc
  * `pipelines()` so rules see the inner commands. Expects unwrapped argv.
  */
 export function nestedScripts(argv: string[]): string[] {
-	if (argv[0] === "eval") return argv.length > 1 ? [argv.slice(1).join(" ")] : [];
+	const extra = [
+		...envExecScripts(envWrapperAssignments(argv)),
+		...interpreterScripts(argv),
+		...(() => { const s = sshRemoteScript(argv); return s ? [s] : []; })(),
+	];
+	if (argv[0] === "eval") return [...(argv.length > 1 ? [argv.slice(1).join(" ")] : []), ...extra];
 	// `trap 'CMD' EXIT` re-parses CMD when the signal fires — and EXIT fires
 	// the moment the tool call's bash exits, so the payload is not deferred
 	// in any meaningful sense. `-l`/`-p` list/print, a `-` action or a lone
@@ -437,5 +522,5 @@ export function nestedScripts(argv: string[]): string[] {
 			}
 		}
 	}
-	return [];
+	return extra;
 }

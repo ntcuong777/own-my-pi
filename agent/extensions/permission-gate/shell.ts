@@ -20,10 +20,16 @@ import type { ArgvPipeline } from "./types.ts"; // type-only: erased, no runtime
 import {
 	braceExpand, REDIRECT_OPS, hasSubPlaceholder, PARSE_BUDGET_SENTINEL, tokenize,
 } from "./tokenize.ts";
+import * as path from "node:path";
 import {
 	basenameCmd, deferredScripts, EXEC_BUILTINS, FETCHERS, isDecoder,
 	nestedScripts, SHELLS, SOURCE_BUILTINS, STDIN_RUNNERS, unwrap,
 } from "./argv.ts";
+import {
+	emitterScript,
+	envExecScripts,
+	fetcherOutputFile,
+} from "./hardening.ts";
 
 export {
 	collapseBrackets, hasSubPlaceholder, heredocSubstitutions, isSubPlaceholder,
@@ -54,6 +60,8 @@ const RESERVED = new Set([
  * command/process substitutions appearing in its words. */
 export interface ShellCommand {
 	argv: string[];
+	/** Leading VAR=value prefixes dropped from argv. */
+	env: string[];
 	subs: string[];
 	/** Inner scripts of output process substitutions `>(…)` — kept apart
 	 * from `subs` because their processes *consume* this pipeline's output
@@ -76,10 +84,17 @@ export type Pipeline = ShellCommand[];
  * callers recurse via `pipelines(sub)` if needed). Leading VAR=value
  * prefixes are dropped so argv[0] is the program.
  */
+export type SequencedPipeline = { pipeline: Pipeline; op: string };
+
 export function pipelines(command: string): Pipeline[] {
-	const result: Pipeline[] = [];
+	return sequencedPipelines(command).map((u) => u.pipeline);
+}
+
+export function sequencedPipelines(command: string): SequencedPipeline[] {
+	const result: SequencedPipeline[] = [];
 	let pipeline: Pipeline = [];
 	let argv: string[] = [];
+	let env: string[] = [];
 	let subs: string[] = [];
 	let outSubs: string[] = [];
 	// Pending stdin data (herestrings and heredoc bodies) — script or data
@@ -144,18 +159,19 @@ export function pipelines(command: string): Pipeline[] {
 		herestrings = [];
 		heredocs = [];
 		redirectSub = false;
-		const cmd: ShellCommand = { argv, subs, outSubs, stdinSub };
+		const cmd: ShellCommand = { argv, env, subs, outSubs, stdinSub };
 		flushedBySeq.set(seq, { cmd, pl: pipeline });
-		if (argv.length || subs.length || outSubs.length) pipeline.push(cmd);
+		if (argv.length || subs.length || outSubs.length || env.length) pipeline.push(cmd);
 		argv = [];
+		env = [];
 		subs = [];
 		outSubs = [];
 		afterTime = false;
 		caseWord = false;
 	};
-	const flushPipeline = () => {
+	const flushPipeline = (op: string) => {
 		flushCommand();
-		if (pipeline.length) result.push(pipeline);
+		if (pipeline.length || op === "(" || op === ")") result.push({ pipeline, op });
 		pipeline = [];
 	};
 
@@ -179,7 +195,7 @@ export function pipelines(command: string): Pipeline[] {
 		// Standalone { } group commands without being operators; treat them as
 		// boundaries so `function f { sudo x; }` doesn't bury sudo mid-argv.
 		if (token.type === "word" && (token.value === "{" || token.value === "}")) {
-			flushPipeline();
+			flushPipeline(token.value);
 			seq++; // the tokenizer counts these boundaries too
 			continue;
 		}
@@ -193,7 +209,7 @@ export function pipelines(command: string): Pipeline[] {
 			// not end the command.
 			if (token.value === "<<" || token.value === "<<-") continue;
 			if (token.value === "|" || token.value === "|&") flushCommand();
-			else flushPipeline();
+			else flushPipeline(token.value);
 			seq++;
 			continue;
 		}
@@ -222,7 +238,7 @@ export function pipelines(command: string): Pipeline[] {
 		// `rm -rf /`), so every expanded word lands in argv individually.
 		for (const w of braceExpand(token.value)) {
 			if (argv.length === 0) {
-				if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w)) continue;
+				if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w)) { env.push(w); continue; }
 				if (RESERVED.has(w)) {
 					// bash's `time` keyword accepts -p and -- before the pipeline
 					// it times — skipping only the keyword left "-p" at argv[0],
@@ -241,7 +257,7 @@ export function pipelines(command: string): Pipeline[] {
 			argv.push(w);
 		}
 	}
-	flushPipeline();
+	flushPipeline("");
 	return result;
 }
 
@@ -276,7 +292,13 @@ export const MAX_PIPELINE_STAGES = 512;
  */
 export function scriptSources(cmd: ShellCommand): string[] {
 	const argv = unwrap(cmd.argv);
-	return [...cmd.subs, ...cmd.outSubs, ...nestedScripts(argv), ...deferredScripts(argv)];
+	return [
+		...cmd.subs,
+		...cmd.outSubs,
+		...nestedScripts(argv),
+		...deferredScripts(argv),
+		...envExecScripts(cmd.env ?? []),
+	];
 }
 
 /**
@@ -356,39 +378,105 @@ function synthesizeOutSubPipelines(upstream: ArgvPipeline, outSubPipes: ArgvPipe
 /** Pipelines as argv lists, recursing into every script source (command/
  * process substitutions, inline scripts, deferred tasks) and synthesizing
  * `fetcher | shell` pipelines for substitution-fed shells. */
-export function collectPipelines(script: string, depth = 0): ArgvPipeline[] {
-	// Depth budget: adversarial nesting ("$(".repeat(3500)) must degrade to
-	// "stop recursing", not overflow the stack — event handlers must never
-	// throw. Exhaustion fails *closed*: the sentinel pipeline keeps 66-deep
-	// nesting from hiding its payload from every rule (see the constant).
+export type TrackedCwd = string | "unknown";
+export const pipelineCwd = new WeakMap<string[][], TrackedCwd>();
+
+function applyCd(argv: string[], cwd: TrackedCwd | undefined, sessionCwd?: string): TrackedCwd | undefined {
+	const u = unwrap(argv);
+	if (u[0] !== "cd") return cwd;
+	const dests: string[] = [];
+	for (let i = 1; i < u.length; i++) {
+		const a = u[i];
+		if (a === "--") continue;
+		if (a === "-") { dests.push("-"); continue; }
+		if (a.startsWith("-")) continue;
+		dests.push(a);
+	}
+	const dest = dests[0];
+	if (!dest) {
+		const home = process.env.HOME;
+		return home ? path.posix.normalize(home) : "unknown";
+	}
+	if (dest === "-" || dest.includes("$") || hasSubPlaceholder(dest) || dest.startsWith("~")) return "unknown";
+	if (dest.startsWith("/")) return path.posix.normalize(dest);
+	const base = cwd && cwd !== "unknown" ? cwd : sessionCwd;
+	if (!base) return "unknown";
+	return path.posix.normalize(path.posix.join(base, dest));
+}
+
+function sameFile(a: string, b: string): boolean {
+	return a === b || path.posix.basename(a) === path.posix.basename(b);
+}
+
+function isShellOfFile(argv: string[], file: string): boolean {
+	const u = unwrap(argv);
+	if (SHELLS.has(u[0]) || SOURCE_BUILTINS.has(u[0])) {
+		return u.slice(1).some((a) => a === "--" || (!a.startsWith("-") && sameFile(a, file)));
+	}
+	const base = path.posix.basename(file);
+	return u[0] === file || u[0] === "./" + file || u[0] === "./" + base || path.posix.basename(u[0]) === base;
+}
+
+function emitPipeline(full: Pipeline, depth: number, cwd: TrackedCwd | undefined, sessionCwd?: string): ArgvPipeline[] {
+	const over = full.length > MAX_PIPELINE_STAGES;
+	const p = over ? full.slice(0, MAX_PIPELINE_STAGES) : full;
+	const argvPipe = p.map((c) => c.argv).filter((argv) => argv.length);
+	if (cwd && argvPipe.length) pipelineCwd.set(argvPipe, cwd);
+	const nested: ArgvPipeline[] = [];
+	for (let ci = 0; ci < p.length; ci++) {
+		const c = p[ci];
+		const nextOpts = sessionCwd ? { sessionCwd } : undefined;
+		const sourcePipes = scriptSources(c).map((s) => collectPipelines(s, depth + 1, nextOpts));
+		const subPipes = sourcePipes.slice(0, c.subs.length);
+		const outSubPipes = sourcePipes.slice(c.subs.length, c.subs.length + c.outSubs.length);
+		const upstream = c.outSubs.length
+			? p.slice(0, ci + 1).map((x) => x.argv).filter((argv) => argv.length)
+			: [];
+		nested.push(
+			...sourcePipes.flat(),
+			...synthesizeFetchExecPipelines(c, subPipes),
+			...synthesizeOutSubPipelines(upstream, outSubPipes),
+		);
+		const head = unwrap(c.argv)[0];
+		if ((SHELLS.has(head) || EXEC_BUILTINS.has(head)) && (c.argv.some(hasSubPlaceholder) || c.stdinSub)) {
+			for (const sub of c.subs) {
+				const units = pipelines(sub);
+				if (units.length === 1 && units[0].length === 1) {
+					const emitted = emitterScript(units[0][0].argv);
+					if (emitted) nested.push(...collectPipelines(emitted, depth + 1, nextOpts));
+				}
+			}
+		}
+	}
+	return [argvPipe, ...nested, ...(over ? [[[PARSE_BUDGET_SENTINEL]]] : [])].filter((pl) => pl.length);
+}
+
+export function collectPipelines(script: string, depth = 0, opts?: { sessionCwd?: string }): ArgvPipeline[] {
 	if (depth > MAX_PARSE_DEPTH) return [[[PARSE_BUDGET_SENTINEL]]];
-	return pipelines(script).flatMap((full) => {
-		// Stage budget: analyze the capped prefix (so an early payload still
-		// matches its own rule) and append the sentinel so the overflow can
-		// never hide anything — same fail-closed policy as the depth budget.
-		const over = full.length > MAX_PIPELINE_STAGES;
-		const p = over ? full.slice(0, MAX_PIPELINE_STAGES) : full;
-		return [
-			p.map((c) => c.argv).filter((argv) => argv.length),
-			...p.flatMap((c, ci) => {
-				const sourcePipes = scriptSources(c).map((s) => collectPipelines(s, depth + 1));
-				// scriptSources lists c.subs first, then c.outSubs (see its order
-				// contract), so the leading entries are the substitution pipelines
-				// the syntheses need.
-				const subPipes = sourcePipes.slice(0, c.subs.length);
-				const outSubPipes = sourcePipes.slice(c.subs.length, c.subs.length + c.outSubs.length);
-				// upstream is only consumed by the out-sub synthesis — building
-				// the prefix slice unconditionally makes stage cost quadratic.
-				const upstream = c.outSubs.length
-					? p.slice(0, ci + 1).map((x) => x.argv).filter((argv) => argv.length)
-					: [];
-				return [
-					...sourcePipes.flat(),
-					...synthesizeFetchExecPipelines(c, subPipes),
-					...synthesizeOutSubPipelines(upstream, outSubPipes),
-				];
-			}),
-			...(over ? [[[PARSE_BUDGET_SENTINEL]]] : []),
-		].filter((pl) => pl.length);
-	});
+	if (depth > 0) {
+		return sequencedPipelines(script).flatMap((u) => emitPipeline(u.pipeline, depth, undefined, opts?.sessionCwd));
+	}
+	let cwd: TrackedCwd | undefined;
+	const stack: Array<TrackedCwd | undefined> = [];
+	const downloads: { file: string; argv: string[] }[] = [];
+	const out: ArgvPipeline[] = [];
+	for (const unit of sequencedPipelines(script)) {
+		out.push(...emitPipeline(unit.pipeline, depth, cwd, opts?.sessionCwd));
+		for (const cmd of unit.pipeline) {
+			const file = fetcherOutputFile(cmd.argv);
+			if (file) downloads.push({ file, argv: cmd.argv });
+			for (const d of downloads) {
+				if (isShellOfFile(cmd.argv, d.file)) {
+					out.push([d.argv, cmd.argv]);
+				}
+			}
+		}
+		const op = unit.op;
+		if (unit.pipeline.length === 1 && (op === "&&" || op === ";" || op === "\n" || op === "" || op === ")")) {
+			cwd = applyCd(unit.pipeline[0].argv, cwd, opts?.sessionCwd);
+		}
+		if (op === "(") stack.push(cwd);
+		if (op === ")") cwd = stack.pop();
+	}
+	return out;
 }

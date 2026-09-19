@@ -27,7 +27,7 @@ const MAX_EVIDENCE_LENGTH = 200;
 
 /** All rules matching `command`. Pipelines and the decoded spelling are
  * computed lazily and at most once per call. */
-export function matchRules(command: string, rules: CompiledRule[]): CompiledRule[] {
+export function matchRules(command: string, rules: CompiledRule[], opts?: { sessionCwd?: string }): CompiledRule[] {
 	let argvPipes: ArgvPipeline[] | undefined;
 	let decoded: string | undefined;
 	// Regex rules run against the raw string *and* the tokenizer-decoded
@@ -49,7 +49,7 @@ export function matchRules(command: string, rules: CompiledRule[]): CompiledRule
 	return rules.filter((r) =>
 		r.kind === "regex"
 			? r.pattern.test(clip(command, r)) || r.pattern.test(clip(decode(), r))
-			: (argvPipes ??= collectPipelines(command)).some((p) => r.test(p)),
+			: (argvPipes ??= collectPipelines(command, 0, opts)).some((p) => r.test(p)),
 	);
 }
 
@@ -76,7 +76,7 @@ export function matchEvidence(command: string, rule: CompiledRule): string | und
 					: command;
 			return snippet(pattern.exec(subject)?.[0]);
 		}
-		const pipeline = collectPipelines(command).find((p) => rule.test(p));
+		const pipeline = collectPipelines(command, 0).find((p) => rule.test(p));
 		return snippet(pipeline?.map((argv) => argv.join(" ")).join(" | "));
 	} catch {
 		// Never let display logic break the prompt: no evidence, just the label.

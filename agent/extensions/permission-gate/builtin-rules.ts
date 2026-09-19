@@ -17,7 +17,9 @@ import {
 	collapseBrackets, deferredScripts, EXEC_BUILTINS, FETCHERS, hasSubPlaceholder,
 	isDecoder, isSubPlaceholder, PARSE_BUDGET_SENTINEL, SHELLS,
 	simpleCommands, SOURCE_BUILTINS, STDIN_RUNNERS, unwrap, unwrapSteps,
+	pipelineCwd,
 } from "./shell.ts";
+import { isInlineInterpreter, sshRemoteScript } from "./hardening.ts";
 
 // ── searchPaths (also passed to rules.ts factories) ─────────────────────
 
@@ -287,7 +289,7 @@ export const DEFAULT_PROMPT_RULES: RuleEntry[] = [
 		// A refspec starting with "+" (`git push origin +main`) forces the
 		// update exactly like -f; git options never start with "+", so any
 		// such argument is a refspec.
-		test: gitSub("push", (a) => hasFlag(a, "f", "--force") || a.some((x) => x.startsWith("+"))),
+		test: gitSub("push", (a) => hasFlag(a, "f", "--force") || a.includes("--force-with-lease") || a.some((x) => x.startsWith("+"))),
 	},
 	{
 		label: "delete remote branch",
@@ -494,6 +496,44 @@ export const DEFAULT_PROMPT_RULES: RuleEntry[] = [
 		group: "guard",
 		test: (p) => anyCmd(p, PARSE_BUDGET_SENTINEL),
 	},
+	{
+		label: "non-literal scan path",
+		group: "scan",
+		test: (p) => p.some((argv) =>
+			searchPaths(argv).some((arg) => arg.includes("$") || hasSubPlaceholder(arg)),
+		),
+	},
+	{
+		label: "relative scan after unknown cd",
+		group: "scan",
+		test: (p) => pipelineCwd.get(p) === "unknown" && p.some((argv) =>
+			searchPaths(argv).some((arg) => !arg.startsWith("/") && !arg.startsWith("$") && !arg.startsWith("~")),
+		),
+	},
+	{
+		label: "ssh remote command",
+		group: "exec",
+		test: (p) => p.some((raw) =>
+			unwrapSteps(raw).some((argv) => !!sshRemoteScript(argv)),
+		),
+	},
+	{
+		label: "crontab",
+		group: "exec",
+		test: (p) => anyCmd(p, ["crontab", "at", "batch", "anacron"]),
+	},
+	{
+		label: "inline interpreter",
+		group: "exec",
+		test: (p) => p.some((raw) =>
+			unwrapSteps(raw).some((argv) => isInlineInterpreter(argv)),
+		),
+	},
+	{
+		label: "env command injection",
+		group: "exec",
+		pattern: "\\b(GIT_PAGER|GIT_EDITOR|GIT_SSH_COMMAND|GIT_SEQUENCE_EDITOR|PAGER|EDITOR|VISUAL|PROMPT_COMMAND|BASH_ENV|LD_PRELOAD|DYLD_INSERT_LIBRARIES)\\s*=",
+	},
 ];
 
 // True if this pipeline stage executes its piped stdin as shell code —
@@ -608,19 +648,37 @@ const globCouldMatchRoot = (word: string, roots: Set<string>): boolean => {
 	return [...roots].some((root) => rx.test(root));
 };
 
-// Search paths are compared as *spelled*: cwd tracking is unavailable
-// (the same pinned limit as cd-relative gate-config writes), so a
-// cwd-relative scan of a blocked root (`cd / && rg foo .`) walks the same
-// tree without naming it. Argument-position expansions
-// (`rg foo /nix/store$x`) share the limit — both are pinned in the
-// documented non-goals.
-const scansRoot = (pipeline: ArgvPipeline, roots: Set<string>) =>
-	pipeline.some((argv) =>
+// Search paths resolve against `cd` in the same command (`&&` / `;`).
+// Argument-position expansions whose static prefix is a blocked root
+// (`rg foo /nix/store$x`) fail closed. Cross-command cwd and unreadable
+// file contents remain out of reach.
+function resolveScanArg(arg: string, cwd: string | undefined): string {
+	if (!cwd || cwd === "unknown") return arg;
+	if (arg.startsWith("/") || arg.startsWith("$") || arg.startsWith("~")) return arg;
+	return path.posix.normalize(path.posix.join(cwd, arg));
+}
+
+function expansionCouldBeRoot(arg: string, roots: Set<string>): boolean {
+	if (!arg.includes("$") && !hasSubPlaceholder(arg)) return false;
+	const cut = arg.search(/\$|<\(|\$\(/);
+	if (cut <= 0) return false;
+	const prefix = path.posix.normalize(arg.slice(0, cut)).replace(/\/+$/, "") || "/";
+	return [...roots].some((root) =>
+		root === prefix || root.startsWith(prefix + "/") || prefix === root || prefix.startsWith(root + "/"),
+	);
+}
+
+const scansRoot = (pipeline: ArgvPipeline, roots: Set<string>) => {
+	const tracked = pipelineCwd.get(pipeline);
+	const cwd = tracked && tracked !== "unknown" ? tracked : undefined;
+	return pipeline.some((argv) =>
 		searchPaths(argv).some((arg) => {
-			const normalized = normalizeRoot(arg);
-			return roots.has(normalized) || globCouldMatchRoot(normalized, roots);
+			const resolved = resolveScanArg(arg, cwd);
+			const normalized = normalizeRoot(resolved);
+			return roots.has(normalized) || globCouldMatchRoot(normalized, roots) || expansionCouldBeRoot(arg, roots);
 		}),
 	);
+};
 
 // `nix … <a> <b>` at any unwrap step (global flags may sit between `nix`
 // and the subcommand, so match the first adjacent pair anywhere). Through
@@ -630,6 +688,13 @@ const isNixSubcommand = (p: ArgvPipeline, a: string, b: string) =>
 	anyCmd(p, "nix", (args) => args.some((w, i) => w === a && args[i + 1] === b));
 
 export const DEFAULT_BLOCK_RULES: RuleEntry[] = [
+	{
+		label: "persist PI_NO_GATE",
+		group: "guard",
+		action: "block",
+		pattern: "export\\s+PI_NO_GATE",
+		reason: "Blocked: persisting PI_NO_GATE would disable the permission gate. Unset it in this command instead of writing it to a startup file.",
+	},
 	{
 		label: "scan /nix/store",
 		group: "scan",
