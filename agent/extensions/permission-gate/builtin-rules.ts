@@ -254,6 +254,7 @@ export const DEFAULT_PROMPT_RULES: RuleEntry[] = [
 	{
 		label: "recursive delete",
 		group: "files",
+		appealHint: "Acceptable: the user named this exact directory as disposable (temp, build, cache). Not acceptable: deleting a source tree, guessing the path, or wiping files to save time.",
 		// rsync with --delete* mirrors "remove everything not in src" onto the
 		// destination — `rsync -a --delete /tmp/empty/ /x/` is the canonical
 		// recursive-delete spelling outside rm/find. --del is the documented
@@ -274,6 +275,7 @@ export const DEFAULT_PROMPT_RULES: RuleEntry[] = [
 		// with changed credentials; sudoedit is `sudo -e` under its own name.
 		label: "sudo",
 		group: "privilege",
+		appealHint: "Acceptable: the user asked for a privileged action that requires root on this machine. Not acceptable: sudo because a previous command failed.",
 		test: (p) => anyCmd(p, ["sudo", "doas", "pkexec", "su", "runuser", "sudoedit"]),
 	},
 	{
@@ -714,6 +716,7 @@ export const DEFAULT_BLOCK_RULES: RuleEntry[] = [
 			"find/fd/rg/grep on / or $HOME is blocked (too slow). Scope to a " +
 			"subdir — depth-bounded spellings (find / -maxdepth 1, rg --max-depth 1) " +
 			"are blocked with the rest; use `ls /` for a shallow listing.",
+		appealHint: "Acceptable: the user asked to inspect a named top-level path and `ls` cannot answer. Not acceptable: searching the whole machine because you do not know where a file is.",
 	},
 	{
 		label: "nix flake show",

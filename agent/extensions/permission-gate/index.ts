@@ -2,11 +2,18 @@
  * permission-gate — confirm or block dangerous bash commands before they run.
  *
  * Every bash command is parsed into the programs it actually runs (see
- * shell.ts) and checked against the rules. A matching rule does one of:
- *   - "prompt": show a Yes/No dialog; No accepts an optional reason that
- *     is sent back to the model. Toggle prompting with /gate.
- *   - "block":  reject outright and tell the model why. Stays active even
- *     when /gate turns prompting off.
+ * shell.ts) and checked against the rules. A matching rule rejects the
+ * command with guidance. The user is never prompted unless the agent
+ * supplies a rationale tied to the current user request (request_permission
+ * or `# pi-gate-goal` / `# pi-gate-rationale` comments). Protected rules
+ * cannot be appealed.
+ *
+ * The review widget is Allow once / Always allow this command in session /
+ * Reject (pre-filled reasons plus type-your-own). Session allow is the
+ * exact requested command, not the rule and not every later script; cap
+ * 512, LRU. A reminder fires after 60s;
+ * 5 minutes after that the prompt auto-rejects (configurable). Toggle
+ * prompting with /gate. Block rules stay active when prompting is off.
  * PI_NO_GATE=1 turns the whole extension off.
  *
  * Configuration is read from four places, in order (each can add rules or
@@ -21,13 +28,20 @@
  */
 
 import type { ExtensionAPI, ExtensionContext, BashToolCallEvent } from "@earendil-works/pi-coding-agent";
-import { EVENTS, type CompiledRule, type GateHelpers, type WarnFn } from "./types.ts";
+import { EVENTS, type CompiledRule, type GateHelpers, type PromptSettings, type WarnFn } from "./types.ts";
 import { searchPaths } from "./builtin-rules.ts";
 import { anyCmd, hasFlag } from "./helpers.ts";
 import { deferredScripts, nestedScripts, pipelines, SHELLS, simpleCommands, unwrap, unwrapSteps } from "./shell.ts";
 import { matchEvidence, matchRules } from "./match.ts";
 import { compileRules, type ConfigLayers, loadConfig, saveUserJson } from "./config.ts";
 import { showReviewPrompt } from "./ui.ts";
+import {
+	compilePromptSettings,
+	rejectReasonChoices,
+	SessionAllow,
+} from "./prompt.ts";
+import { APPEAL_FOOTER, decideGate, parseAppealComments } from "./appeal.ts";
+import { Type } from "typebox";
 
 const GATE_SUBCMDS = "list(ls)|off <group>|on <group>|add|remove(rm)|reload";
 const HELPERS: GateHelpers = {
@@ -48,6 +62,9 @@ export default function permissionGate(pi: ExtensionAPI) {
 	let promptsEnabled = true;
 	let layers: ConfigLayers = { userCode: {}, userJson: {}, project: {} };
 	let rules: CompiledRule[] = compileRules(layers);
+	let promptSettings: PromptSettings = compilePromptSettings(layers);
+	const sessionAllow = new SessionAllow();
+	const onceAllow = new Set<string>();
 
 	function updateStatus(ctx: ExtensionContext): void {
 		if (!ctx.hasUI) return;
@@ -57,6 +74,7 @@ export default function permissionGate(pi: ExtensionAPI) {
 	async function reloadRules(cwd: string, warn: WarnFn | undefined, headless: boolean): Promise<void> {
 		layers = await loadConfig(cwd, HELPERS, warn);
 		rules = compileRules(layers, warn, { headless });
+		promptSettings = compilePromptSettings(layers);
 	}
 
 	// ── events ───────────────────────────────────────────────────────────
@@ -69,8 +87,44 @@ export default function permissionGate(pi: ExtensionAPI) {
 		const warn: WarnFn = (msg) =>
 			ctx.hasUI ? ctx.ui.notify(msg, "warning") : console.error(msg);
 		await reloadRules(ctx.cwd, warn, !ctx.hasUI);
+		sessionAllow.clear();
+		onceAllow.clear();
 		updateStatus(ctx);
 	});
+
+	async function reviewCommand(
+		ctx: ExtensionContext,
+		command: string,
+		matched: CompiledRule[],
+		appeal?: { goal: string; rationale: string },
+		deferOnce = false,
+	) {
+		const decision = decideGate(command, matched, { sessionAllow, onceAllow, promptsEnabled, appeal });
+		if (decision.kind === "allow") return undefined;
+		if (decision.kind === "block") return { block: true, reason: decision.reason };
+
+		if (!ctx.hasUI) {
+			return { block: true, reason: `Dangerous command blocked (${decision.labels}) — no UI` };
+		}
+
+		const matches = decision.matches.map((r) => ({ label: r.label, evidence: matchEvidence(decision.command, r) }));
+		const result = await showReviewPrompt(ctx, decision.command, decision.labels, pi.events, matches, {
+			settings: promptSettings,
+			rejectReasons: rejectReasonChoices(decision.matches),
+			appeal: decision.appeal,
+			onNotify: () => {
+				ctx.ui.notify(`Permission prompt still waiting (${decision.labels})`, "warning");
+			},
+		});
+		pi.events.emit(EVENTS.resolved);
+		if (result.allow && result.always) {
+			sessionAllow.add(decision.command);
+		} else if (result.allow && deferOnce) {
+			onceAllow.add(decision.command);
+		}
+		if (result.allow) return undefined;
+		return { block: true, reason: `${result.reason}\n\n${APPEAL_FOOTER}` };
+	}
 
 	pi.on("tool_call", async (event, ctx) => {
 		let command: string | undefined;
@@ -85,13 +139,10 @@ export default function permissionGate(pi: ExtensionAPI) {
 		}
 		if (!command) return undefined;
 
-		// A throwing rule must fail *closed* — without this guard a malformed
-		// project config errored every bash call through pi's tool plumbing
-		// instead of blocking cleanly, and the handler contract is "never
-		// throw" (loadConfig sanitizes; this is defense in depth).
 		let matched: CompiledRule[];
 		try {
-			matched = matchRules(command, rules, { sessionCwd: ctx.cwd });
+			const stripped = parseAppealComments(command).command;
+			matched = matchRules(stripped, rules, { sessionCwd: ctx.cwd });
 		} catch (err) {
 			if (ctx.hasUI) {
 				ctx.ui.notify(`permission-gate: rule evaluation failed: ${(err as Error).message}`, "warning");
@@ -99,29 +150,56 @@ export default function permissionGate(pi: ExtensionAPI) {
 			return { block: true, reason: "Blocked: permission-gate rule evaluation failed — fix the gate config (see /gate list) and retry" };
 		}
 		if (matched.length === 0) return undefined;
+		return reviewCommand(ctx, command, matched);
+	});
 
-		// Block wins over prompt and ignores the /gate toggle.
-		const block = matched.find((r) => r.action === "block");
-		if (block) {
-			return { block: true, reason: block.reason ?? `Blocked (${block.label})` };
-		}
-
-		const prompts = matched.filter((r) => r.action === "prompt");
-		if (!promptsEnabled || prompts.length === 0) return undefined;
-
-		const labels = prompts.map((m) => m.label).join(", ");
-		if (!ctx.hasUI) {
-			return { block: true, reason: `Dangerous command blocked (${labels}) — no UI` };
-		}
-
-		// showReviewPrompt emits EVENTS.waiting itself, *after* arming its
-		// EVENTS.respond listener — emitting it here lost the answer of any
-		// responder that reacted synchronously.
-		const matches = prompts.map((r) => ({ label: r.label, evidence: matchEvidence(command, r) }));
-		const result = await showReviewPrompt(ctx, command, labels, pi.events, matches);
-		pi.events.emit(EVENTS.resolved);
-
-		return result.allow ? undefined : { block: true, reason: result.reason };
+	pi.registerTool({
+		name: "request_permission",
+		label: "Request permission",
+		description:
+			"Ask the user to allow a gated shell command. Only call this when you can name the user's current request and why THIS exact command is required for it. Do not call it for convenience, exploration, a failed edit, or if you cannot tie the command to that request.",
+		promptSnippet: "Ask the user to allow a gated command, with a goal-tied rationale",
+		promptGuidelines: [
+			"Never prompt the user for a gated command unless you can restate their current request and explain why this exact command is required for it.",
+			"Call request_permission instead of retrying a blocked command as-is. Protected blocks cannot be appealed.",
+		],
+		parameters: Type.Object({
+			command: Type.String({ description: "The exact shell command to run if the user allows it." }),
+			goal: Type.String({ description: "The user's current request in their words, not a restatement of the command." }),
+			rationale: Type.String({ description: "Why this exact command is required for that request. Name the path, host, or target." }),
+		}, { additionalProperties: false }),
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const command = String(params.command ?? "");
+			const goal = String(params.goal ?? "");
+			const rationale = String(params.rationale ?? "");
+			const stripped = parseAppealComments(command).command;
+			let matched: CompiledRule[];
+			try {
+				matched = matchRules(stripped, rules, { sessionCwd: ctx.cwd });
+			} catch (err) {
+				return {
+					content: [{ type: "text", text: `Blocked: permission-gate rule evaluation failed: ${(err as Error).message}` }],
+					details: {},
+				};
+			}
+			if (matched.length === 0) {
+				return {
+					content: [{ type: "text", text: "This command is not gated. Run it with bash; do not ask the user." }],
+					details: {},
+				};
+			}
+			const result = await reviewCommand(ctx, stripped, matched, { goal, rationale }, true);
+			if (!result) {
+				return {
+					content: [{ type: "text", text: "Allowed. Retry the same command with bash now (do not add appeal comments)." }],
+					details: {},
+				};
+			}
+			return {
+				content: [{ type: "text", text: result.reason }],
+				details: {},
+			};
+		},
 	});
 
 	// ── /gate ────────────────────────────────────────────────────────────

@@ -147,12 +147,58 @@ export function sanitizeConfig(raw: unknown, origin: string, allowTest: boolean,
 				warn?.(`permission-gate: ${origin}: rule "${e.label}" flags is not a string — skipped`);
 				continue;
 			}
+			if (Array.isArray(e.rejectReasons)) {
+				e.rejectReasons = e.rejectReasons.filter((x): x is string => typeof x === "string")
+					.map((x) => x.trim())
+					.filter(Boolean)
+					.slice(0, 8)
+					.map((x) => x.slice(0, 200));
+				if (e.rejectReasons.length === 0) delete e.rejectReasons;
+			} else if (e.rejectReasons !== undefined) {
+				warn?.(`permission-gate: ${origin}: rule "${e.label}" rejectReasons is not an array — ignored`);
+				delete e.rejectReasons;
+			}
+			if (typeof e.appealHint === "string") {
+				e.appealHint = e.appealHint.trim().slice(0, 400);
+				if (!e.appealHint) delete e.appealHint;
+			} else if (e.appealHint !== undefined) {
+				warn?.(`permission-gate: ${origin}: rule "${e.label}" appealHint is not a string — ignored`);
+				delete e.appealHint;
+			}
+			if (e.appealable !== undefined && typeof e.appealable !== "boolean") {
+				warn?.(`permission-gate: ${origin}: rule "${e.label}" appealable is not a boolean — ignored`);
+				delete e.appealable;
+			}
 			entries.push(e);
 		}
 		return entries;
 	};
 	if (cfg.rules !== undefined) out.rules = sanitizeEntries(cfg.rules, "rules");
 	if (cfg.extraRules !== undefined) out.extraRules = sanitizeEntries(cfg.extraRules, "extraRules");
+	if (cfg.prompt !== undefined) {
+		if (cfg.prompt === null || typeof cfg.prompt !== "object" || Array.isArray(cfg.prompt)) {
+			warn?.(`permission-gate: ${origin}: prompt must be an object — ignored`);
+		} else {
+			const p = cfg.prompt as Record<string, unknown>;
+			const prompt: NonNullable<GateConfig["prompt"]> = {};
+			if (typeof p.notifyAfterMs === "number" && Number.isFinite(p.notifyAfterMs) && p.notifyAfterMs >= 0) {
+				prompt.notifyAfterMs = p.notifyAfterMs;
+			} else if (p.notifyAfterMs !== undefined) {
+				warn?.(`permission-gate: ${origin}: prompt.notifyAfterMs must be a non-negative number — ignored`);
+			}
+			if (typeof p.timeoutMs === "number" && Number.isFinite(p.timeoutMs) && p.timeoutMs >= 0) {
+				prompt.timeoutMs = p.timeoutMs;
+			} else if (p.timeoutMs !== undefined) {
+				warn?.(`permission-gate: ${origin}: prompt.timeoutMs must be a non-negative number — ignored`);
+			}
+			if (p.onTimeout === "reject" || p.onTimeout === "allow") {
+				prompt.onTimeout = p.onTimeout;
+			} else if (p.onTimeout !== undefined) {
+				warn?.(`permission-gate: ${origin}: prompt.onTimeout must be "reject" or "allow" — ignored`);
+			}
+			if (Object.keys(prompt).length) out.prompt = prompt;
+		}
+	}
 	return out;
 }
 
@@ -305,7 +351,7 @@ function compileEntry(r: RuleEntry, source: RuleSource, warn?: WarnFn): Compiled
 		if (r.pattern !== undefined) {
 			warn?.(`permission-gate: rule "${label}" sets both pattern and test — pattern is ignored`);
 		}
-		return { kind: "argv", label, group: r.group, action, reason, source, test: r.test };
+		return { kind: "argv", label, group: r.group, action, reason, rejectReasons: r.rejectReasons, appealHint: r.appealHint, appealable: r.appealable, source, test: r.test };
 	}
 	if (r.test !== undefined) {
 		// JSON cannot carry functions but can carry `true` — compiling such a
@@ -339,7 +385,7 @@ function compileEntry(r: RuleEntry, source: RuleSource, warn?: WarnFn): Compiled
 		const pattern = r.pattern instanceof RegExp
 			? new RegExp(r.pattern.source, flags)
 			: new RegExp(r.pattern, flags);
-		return { kind: "regex", label, group: r.group, action, reason, source, pattern };
+		return { kind: "regex", label, group: r.group, action, reason, rejectReasons: r.rejectReasons, appealHint: r.appealHint, appealable: r.appealable, source, pattern };
 	} catch (err) {
 		warn?.(`permission-gate: invalid regex for "${label}": ${(err as Error).message}`);
 		return undefined;

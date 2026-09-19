@@ -8,7 +8,7 @@
  */
 
 import type { ArgvPipeline, CompiledRule } from "./types.ts";
-import { collectPipelines, tokenize } from "./shell.ts";
+import { collectFileScriptBodies, collectPipelines, tokenize } from "./shell.ts";
 
 /**
  * Project regexes match against at most this many characters of the
@@ -30,6 +30,7 @@ const MAX_EVIDENCE_LENGTH = 200;
 export function matchRules(command: string, rules: CompiledRule[], opts?: { sessionCwd?: string }): CompiledRule[] {
 	let argvPipes: ArgvPipeline[] | undefined;
 	let decoded: string | undefined;
+	let fileBodies: string | undefined;
 	// Regex rules run against the raw string *and* the tokenizer-decoded
 	// words (quotes stripped, escapes decoded, redirect targets included —
 	// they are word tokens at this level). Raw-only matching let a quote
@@ -42,13 +43,15 @@ export function matchRules(command: string, rules: CompiledRule[], opts?: { sess
 			.map((t) => (t.type === "word" || t.type === "op" ? t.value : ""))
 			.filter(Boolean)
 			.join(" "));
+	const bodies = () => (fileBodies ??= collectFileScriptBodies(command, opts?.sessionCwd));
 	const clip = (s: string, r: CompiledRule) =>
 		r.source === "project" && s.length > MAX_PROJECT_MATCH_LENGTH
 			? s.slice(0, MAX_PROJECT_MATCH_LENGTH)
 			: s;
 	return rules.filter((r) =>
 		r.kind === "regex"
-			? r.pattern.test(clip(command, r)) || r.pattern.test(clip(decode(), r))
+			? r.pattern.test(clip(command, r)) || r.pattern.test(clip(decode(), r)) ||
+				(bodies() !== "" && r.pattern.test(clip(bodies(), r)))
 			: (argvPipes ??= collectPipelines(command, 0, opts)).some((p) => r.test(p)),
 	);
 }

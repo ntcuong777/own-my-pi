@@ -7,7 +7,7 @@
  *   - `pipelines`: assembles tokens into pipelines of simple commands,
  *     deciding which herestrings/heredoc bodies are scripts vs. data.
  *   - `scriptSources`: the single list of every script a command carries
- *     (substitutions, inline scripts, deferred tasks).
+ *     (substitutions, inline scripts, deferred tasks, local script files).
  *   - `simpleCommands` / `collectPipelines`: the two recursive walks over
  *     that list — flat argvs for simple rules, pipelines (plus synthesized
  *     `fetcher | shell` correlations) for the matcher.
@@ -28,7 +28,9 @@ import {
 import {
 	emitterScript,
 	envExecScripts,
+	extractEmbeddedShell,
 	fetcherOutputFile,
+	loadScriptFiles,
 } from "./hardening.ts";
 
 export {
@@ -72,6 +74,9 @@ export interface ShellCommand {
 	 * <(curl u)`, `bash <<< "$(curl u)"`) — the placeholder never reaches
 	 * argv, so the fetch/decoder synthesis needs this flag to correlate. */
 	stdinSub: boolean;
+	/** Literal `< file` targets. Interpreters that run stdin as a script
+	 * (`python3 < /tmp/x.py`) execute these files; they are not argv words. */
+	inFiles: string[];
 }
 
 /** Commands connected by `|` / `|&`, in order. */
@@ -110,6 +115,7 @@ export function sequencedPipelines(command: string): SequencedPipeline[] {
 	// <(curl u)`); the target word itself is dropped, so flushCommand
 	// records the fact on the command instead.
 	let redirectSub = false;
+	let inFiles: string[] = [];
 	// Sequence number of the current simple command, counted exactly like
 	// the tokenizer counts it (see tokenize). Heredoc tokens carry the seq
 	// of the command that had the << operator, so an operator between <<
@@ -159,13 +165,14 @@ export function sequencedPipelines(command: string): SequencedPipeline[] {
 		herestrings = [];
 		heredocs = [];
 		redirectSub = false;
-		const cmd: ShellCommand = { argv, env, subs, outSubs, stdinSub };
+		const cmd: ShellCommand = { argv, env, subs, outSubs, stdinSub, inFiles };
 		flushedBySeq.set(seq, { cmd, pl: pipeline });
-		if (argv.length || subs.length || outSubs.length || env.length) pipeline.push(cmd);
+		if (argv.length || subs.length || outSubs.length || env.length || inFiles.length) pipeline.push(cmd);
 		argv = [];
 		env = [];
 		subs = [];
 		outSubs = [];
+		inFiles = [];
 		afterTime = false;
 		caseWord = false;
 	};
@@ -231,7 +238,10 @@ export function sequencedPipelines(command: string): SequencedPipeline[] {
 			// substitution placeholder pipes that substitution's output into
 			// this command, which flushCommand must know.
 			if (op === "<<<") herestrings.push(token.value);
-			else if (op === "<" && hasSubPlaceholder(token.value)) redirectSub = true;
+			else if (op === "<") {
+				if (hasSubPlaceholder(token.value)) redirectSub = true;
+				else inFiles.push(token.value);
+			}
 			continue;
 		}
 		// Brace expansion may split one word into several (`{rm,-rf,/}` runs
@@ -277,6 +287,12 @@ export const MAX_PARSE_DEPTH = 64;
  */
 export const MAX_PIPELINE_STAGES = 512;
 
+/** Pipelines as argv lists, recursing into every script source (command/
+ * process substitutions, inline scripts, deferred tasks) and synthesizing
+ * `fetcher | shell` pipelines for substitution-fed shells. */
+export type TrackedCwd = string | "unknown";
+export const pipelineCwd = new WeakMap<string[][], TrackedCwd>();
+
 // PARSE_BUDGET_SENTINEL (re-exported above) lives in tokenize.ts so that
 // argv.ts's unwrap-step budget can emit it without an import cycle.
 
@@ -284,20 +300,25 @@ export const MAX_PIPELINE_STAGES = 512;
  * Every script source a command carries: its command/process substitution
  * scripts, then the inline scripts (`sh -c '…'`, `eval …`) and deferred
  * tasks (`pueue add …`, `tmux new-session …`, `find -exec …`) of the
- * unwrapped argv. This is the single walk both `simpleCommands` and
- * `collectPipelines` recurse through — add new script sources here so the
- * two can never diverge. Order contract: `cmd.subs` come first (in order),
- * then `cmd.outSubs` (in order), so callers can correlate the leading
- * entries back to the substitutions.
+ * unwrapped argv, plus local interpreter/shell files those commands run.
+ * This is the single walk both `simpleCommands` and `collectPipelines`
+ * recurse through — add new script sources here so the two can never
+ * diverge. Order contract: `cmd.subs` come first (in order), then
+ * `cmd.outSubs` (in order), so callers can correlate the leading entries
+ * back to the substitutions.
  */
-export function scriptSources(cmd: ShellCommand): string[] {
+export function scriptSources(cmd: ShellCommand, cwd?: TrackedCwd, sessionCwd?: string): string[] {
 	const argv = unwrap(cmd.argv);
+	const base = cwd && cwd !== "unknown" ? cwd : sessionCwd;
+	const files = loadScriptFiles(argv, cmd.inFiles ?? [], base);
 	return [
 		...cmd.subs,
 		...cmd.outSubs,
 		...nestedScripts(argv),
 		...deferredScripts(argv),
 		...envExecScripts(cmd.env ?? []),
+		...files.filter((s) => s.kind === "shell").map((s) => s.text),
+		...files.filter((s) => s.kind === "code").flatMap((s) => extractEmbeddedShell(s.text)),
 	];
 }
 
@@ -375,12 +396,6 @@ function synthesizeOutSubPipelines(upstream: ArgvPipeline, outSubPipes: ArgvPipe
 	return synthesized;
 }
 
-/** Pipelines as argv lists, recursing into every script source (command/
- * process substitutions, inline scripts, deferred tasks) and synthesizing
- * `fetcher | shell` pipelines for substitution-fed shells. */
-export type TrackedCwd = string | "unknown";
-export const pipelineCwd = new WeakMap<string[][], TrackedCwd>();
-
 function applyCd(argv: string[], cwd: TrackedCwd | undefined, sessionCwd?: string): TrackedCwd | undefined {
 	const u = unwrap(argv);
 	if (u[0] !== "cd") return cwd;
@@ -426,7 +441,7 @@ function emitPipeline(full: Pipeline, depth: number, cwd: TrackedCwd | undefined
 	for (let ci = 0; ci < p.length; ci++) {
 		const c = p[ci];
 		const nextOpts = sessionCwd ? { sessionCwd } : undefined;
-		const sourcePipes = scriptSources(c).map((s) => collectPipelines(s, depth + 1, nextOpts));
+		const sourcePipes = scriptSources(c, cwd, sessionCwd).map((s) => collectPipelines(s, depth + 1, nextOpts));
 		const subPipes = sourcePipes.slice(0, c.subs.length);
 		const outSubPipes = sourcePipes.slice(c.subs.length, c.subs.length + c.outSubs.length);
 		const upstream = c.outSubs.length
@@ -479,4 +494,29 @@ export function collectPipelines(script: string, depth = 0, opts?: { sessionCwd?
 		if (op === ")") cwd = stack.pop();
 	}
 	return out;
+}
+
+/** Bodies of local files an interpreter or shell will execute, for regex rules. */
+export function collectFileScriptBodies(command: string, sessionCwd?: string): string {
+	const chunks: string[] = [];
+	const seen = new Set<string>();
+	const walk = (script: string, depth: number, cwd?: string) => {
+		if (depth > MAX_PARSE_DEPTH) return;
+		for (const unit of sequencedPipelines(script)) {
+			for (const cmd of unit.pipeline) {
+				for (const file of loadScriptFiles(unwrap(cmd.argv), cmd.inFiles ?? [], cwd)) {
+					if (seen.has(file.path)) continue;
+					seen.add(file.path);
+					chunks.push(file.text);
+					if (file.kind === "shell") walk(file.text, depth + 1, cwd);
+				}
+				const argv = unwrap(cmd.argv);
+				for (const inner of [...cmd.subs, ...cmd.outSubs, ...nestedScripts(argv), ...deferredScripts(argv)]) {
+					walk(inner, depth + 1, cwd);
+				}
+			}
+		}
+	};
+	walk(command, 0, sessionCwd);
+	return chunks.join("\n");
 }

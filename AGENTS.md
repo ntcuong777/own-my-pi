@@ -37,6 +37,33 @@ The Pi CLI is `nix build .#pi` / home.packages, pinned by flake input `pi`
 (github:earendil-works/pi). Do not install @earendil-works/pi-coding-agent
 via activation or `npm install -g`.
 
+## File edits
+
+Use the hashline `edit` tool. Never rewrite files with `python -c`,
+`node -e`, `bun -e`, a python/node/bun heredoc, a one-off `*.py`/`*.js`/
+`*.ts` patcher, `sed -i`, or `perl -pi`. Those skip hashline, slow-mode,
+and undo. Writing a temp script and running it (`python3 /tmp/patch.py`,
+`node /tmp/x.js`, `bun /tmp/x.ts`, `bash /tmp/x.sh`, `source x.sh`) is
+the same bypass: the gate reads that file and prompts only if you
+supply a rationale tied to the user's current request (`request_permission`
+in Pi, or `# pi-gate-goal` / `# pi-gate-rationale` comments in Cursor
+Shell). A gated command without that rationale never asks the user.
+Test runners (`bun test`, `node --test`, `pytest`) are scanned the same
+way. The prompt is Allow once, Always allow this exact command for the session (not every script; LRU cap 512), or
+Reject with a reason (pre-filled plus type-your-own). After 60s with no
+answer a reminder fires; 5 minutes after that the prompt auto-rejects.
+Both delays and the timeout default (reject vs allow) are configurable
+in the overlay `prompt` block. If `edit` fails, re-read the file and
+retry with fresh `LINE#HASH` anchors. `replace_text` is disabled
+(`replaceText: false` in hashline.json).
+
+Cursor models inside Pi (`pi-cursor-sdk`) keep Cursor's own Read / Shell /
+Write / StrReplace host tools. Pi's overlapping builtins (`read`, `bash`,
+`write`, `edit`, …) are hidden from the Cursor bridge unless
+`PI_CURSOR_EXPOSE_BUILTIN_TOOLS=1`. Cursor host Shell does not go through
+permission-gate. Do not fall back to python, node, or bun scripts there
+either: use Cursor StrReplace / Write, or the hashline `edit` MCP tool.
+
 ## Plugins
 
 Do not use pi install npm: at runtime. Settings packages are local paths under

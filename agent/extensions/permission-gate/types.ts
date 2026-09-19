@@ -21,6 +21,26 @@ export const EVENTS = {
 } as const;
 
 /** How a matched rule is handled. */
+
+/** What happens when a review prompt times out. */
+export type TimeoutAction = "reject" | "allow";
+
+/** Idle timers for the review prompt. Durations are milliseconds. */
+export type PromptSettings = {
+	/** Idle time before a reminder notification. Default 60_000. */
+	notifyAfterMs: number;
+	/** Idle time *after* the reminder before onTimeout. Default 300_000. */
+	timeoutMs: number;
+	/** Default "reject". */
+	onTimeout: TimeoutAction;
+};
+
+/** Partial prompt settings as written in rules.ts / rules.json. */
+export type PromptSettingsConfig = {
+	notifyAfterMs?: number;
+	timeoutMs?: number;
+	onTimeout?: TimeoutAction;
+};
 export type Action = "prompt" | "block";
 
 /** Where a compiled rule came from (for /gate list and /gate rm). */
@@ -56,9 +76,17 @@ export interface RuleEntry {
 	action?: Action;
 	/** Message returned to the model on block. Defaults to a generic one derived from `label`. */
 	reason?: string;
+	/** Pre-filled rejection reasons shown in the prompt (plus a type-your-own field). */
+	rejectReasons?: string[];
+	/**
+	 * Extra guidance appended to a block reason telling the agent what an
+	 * acceptable appeal looks like for this rule. Protected labels ignore it.
+	 */
+	appealHint?: string;
+	/** Default true except for protected labels. */
+	appealable?: boolean;
 }
 
-/** Config file shape (rules.ts / rules.json / .pi/permission-gate.json). */
 export interface GateConfig {
 	/** Replace the built-in *prompt* defaults entirely. Block defaults are only removable via `disabledRules`. */
 	rules?: RuleEntry[];
@@ -68,6 +96,8 @@ export interface GateConfig {
 	disabledRules?: string[];
 	/** Disable whole rule groups by name — the coarse dial. `/gate off <group>` writes here. */
 	disabledGroups?: string[];
+	/** Review-prompt timers. User-code overlay wins over rules.json; project is ignored. */
+	prompt?: PromptSettingsConfig;
 }
 
 /** Helpers passed to a rules.ts factory so it needs no cross-package imports. */
@@ -104,6 +134,9 @@ export type CompiledRule = {
 	group?: string;
 	action: Action;
 	reason?: string;
+	rejectReasons?: string[];
+	appealHint?: string;
+	appealable?: boolean;
 	source: RuleSource;
 } & (
 	| { kind: "regex"; pattern: RegExp }
@@ -112,4 +145,4 @@ export type CompiledRule = {
 
 export type WarnFn = (msg: string) => void;
 
-export type GateResult = { allow: true } | { allow: false; reason: string };
+export type GateResult = { allow: true; always?: boolean } | { allow: false; reason: string };
